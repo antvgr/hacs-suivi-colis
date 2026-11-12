@@ -8,6 +8,11 @@ STORAGE_VERSION = 1
 
 # Config keys
 CONF_API_KEY = "api_key"
+CONF_ARCHIVE_AFTER_DAYS = "archive_after_days"
+CONF_EMAIL_INTERVAL = "email_interval"
+CONF_MAILBOXES = "mailboxes"
+
+# Legacy single-mailbox keys (config entry v1, migrated to CONF_MAILBOXES)
 CONF_IMAP_SERVER = "imap_server"
 CONF_IMAP_PORT = "imap_port"
 CONF_IMAP_USER = "imap_user"
@@ -15,24 +20,78 @@ CONF_IMAP_PASSWORD = "imap_password"
 CONF_IMAP_FOLDER = "imap_folder"
 CONF_IMAP_SSL = "imap_ssl"
 CONF_IMAP_DEDICATED = "imap_dedicated"
-CONF_ARCHIVE_AFTER_DAYS = "archive_after_days"
-CONF_EMAIL_INTERVAL = "email_interval"
+
+# Mailbox keys (one dict per mailbox in options[CONF_MAILBOXES])
+MB_ID = "id"
+MB_NAME = "name"
+MB_ENABLED = "enabled"
+MB_PROVIDER = "provider"
+MB_SERVER = "server"
+MB_PORT = "port"
+MB_SECURITY = "security"
+MB_VERIFY_SSL = "verify_ssl"
+MB_TIMEOUT = "timeout"
+MB_USERNAME = "username"
+MB_PASSWORD = "password"
+MB_FOLDERS = "folders"
+MB_DEDICATED = "dedicated"
+MB_UNSEEN_ONLY = "unseen_only"
+MB_MARK_SEEN = "mark_seen"
+MB_SEARCH_DAYS = "search_days"
+MB_MAX_EMAILS = "max_emails"
+
+# Connection security modes
+SECURITY_SSL = "ssl"  # Implicit TLS (IMAPS), usually port 993
+SECURITY_STARTTLS = "starttls"  # Plain connection upgraded with STARTTLS, usually 143
+SECURITY_NONE = "none"  # Unencrypted, usually 143
+SECURITY_MODES = [SECURITY_SSL, SECURITY_STARTTLS, SECURITY_NONE]
+DEFAULT_PORTS = {SECURITY_SSL: 993, SECURITY_STARTTLS: 143, SECURITY_NONE: 143}
+
+# Provider presets: server, port, security
+PROVIDER_CUSTOM = "custom"
+IMAP_PROVIDERS: dict[str, tuple[str, int, str]] = {
+    "gmail": ("imap.gmail.com", 993, SECURITY_SSL),
+    "outlook": ("outlook.office365.com", 993, SECURITY_SSL),
+    "yahoo": ("imap.mail.yahoo.com", 993, SECURITY_SSL),
+    "icloud": ("imap.mail.me.com", 993, SECURITY_SSL),
+    "orange": ("imap.orange.fr", 993, SECURITY_SSL),
+    "free": ("imap.free.fr", 993, SECURITY_SSL),
+    "sfr": ("imap.sfr.fr", 993, SECURITY_SSL),
+    "laposte": ("imap.laposte.net", 993, SECURITY_SSL),
+    "gmx": ("imap.gmx.com", 993, SECURITY_SSL),
+    "ionos": ("imap.ionos.fr", 993, SECURITY_SSL),
+    "ovh": ("ssl0.ovh.net", 993, SECURITY_SSL),
+    "proton_bridge": ("127.0.0.1", 1143, SECURITY_STARTTLS),
+}
 
 # Defaults
 DEFAULT_IMAP_PORT = 993
 DEFAULT_IMAP_FOLDER = "INBOX"
 DEFAULT_IMAP_SSL = True
+DEFAULT_SECURITY = SECURITY_SSL
+DEFAULT_VERIFY_SSL = True
+DEFAULT_TIMEOUT = 30  # seconds
+DEFAULT_SEARCH_DAYS = 1
+DEFAULT_MAX_EMAILS = 50
 DEFAULT_ARCHIVE_AFTER_DAYS = 2
 DEFAULT_EMAIL_INTERVAL = 15  # minutes
 DEFAULT_UPDATE_INTERVAL = 30  # minutes
 
 # 17track API
-API_17TRACK_BASE = "https://api.17track.net/track/v2.2"
+API_17TRACK_BASE = "https://api.17track.net/track/v2.4"
 API_17TRACK_REGISTER = f"{API_17TRACK_BASE}/register"
 API_17TRACK_GETTRACKINFO = f"{API_17TRACK_BASE}/gettrackinfo"
 API_17TRACK_STOPTRACK = f"{API_17TRACK_BASE}/stoptrack"
+API_17TRACK_QUOTA_ERRORS = (-18019907, -18019908)  # daily limit / quota exhausted
 API_17TRACK_GETQUOTA = f"{API_17TRACK_BASE}/getquota"
 API_17TRACK_RATE_LIMIT = 3  # req/sec
+
+# Languages 17track can translate tracking events into (v2.4 "lang")
+API_17TRACK_LANGS = {
+    "en", "ja", "fr", "da", "th", "de", "es", "zh-hans", "zh-hant", "ar", "bg",
+    "cs", "el", "et", "fi", "he", "hu", "it", "ko", "lv", "nl", "no", "pl", "pt",
+    "ro", "ru", "sk", "sl", "sv", "tr", "uk", "vi",
+}
 
 # Carrier regex patterns (for manual add detection) — pre-compiled
 CARRIER_REGEX = {
@@ -103,16 +162,18 @@ TRACKING_NUMBER_PATTERNS = [
     re.compile(r"\b(JJD\d{18})\b", re.IGNORECASE),                # DHL
 ]
 
-# 17track carrier codes mapping
+# 17track carrier codes, checked against
+# https://res.17track.net/asset/carrier/info/apicarrier.all.json
+# Only unambiguous carriers are forced on /register. DHL (Express, Paket,
+# eCommerce…) and Amazon (Shipping FR/US, Swiship…) have several codes: 17track
+# auto-detection picks the right one, a wrong code would track the wrong carrier.
 CARRIER_17TRACK_CODE = {
-    "chronopost": 4031,
-    "colissimo": 4036,
-    "laposte": 4036,
-    "dhl": 100003,
+    "chronopost": 100273,  # Chronopost (FR)
+    "colissimo": 6051,  # La Poste (Colissimo)
+    "laposte": 6051,
     "ups": 100002,
-    "amazon": 100143,
     "cainiao": 190271,
-    "colisprive": 100027,
+    "colisprive": 100027,  # Colis Privé
 }
 
 # Status icon mapping

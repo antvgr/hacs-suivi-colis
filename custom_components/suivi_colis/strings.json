@@ -3,29 +3,82 @@
     "step": {
       "user": {
         "title": "17track API Key",
-        "description": "Enter your 17track API key. Get one for free at https://api.17track.net",
+        "description": "Enter your 17track API key. Create an account on {api_url} to get one.",
         "data": {
           "api_key": "API Key"
         }
       },
-      "imap": {
-        "title": "Email Tracking (Optional)",
-        "description": "Configure IMAP to automatically detect tracking numbers from emails. Leave server empty to skip.",
+      "mailboxes": {
+        "title": "Email tracking (optional)",
+        "description": "Add one or more IMAP mailboxes to detect tracking numbers automatically. You can add, edit or remove mailboxes later from the options.\n\nConfigured mailboxes:\n{mailboxes}",
+        "menu_options": {
+          "mailbox_provider": "➕ Add a mailbox",
+          "finish": "✔️ Finish"
+        }
+      },
+      "mailbox_provider": {
+        "title": "Add a mailbox",
+        "description": "Pick your provider to prefill server, port and encryption, or \"Other\" to enter everything yourself.",
         "data": {
-          "imap_server": "IMAP Server",
-          "imap_port": "Port",
-          "imap_user": "Username",
-          "imap_password": "Password",
-          "imap_folder": "Folder",
-          "imap_ssl": "Use SSL",
-          "imap_dedicated": "Dedicated mailbox (parse all emails, not just known carriers)"
+          "provider": "Provider"
+        }
+      },
+      "mailbox_connection": {
+        "title": "IMAP connection",
+        "description": "The connection is tested when you submit.\n\nGmail, Yahoo, iCloud: use an **app password** (the account password is rejected). Microsoft Outlook/Hotmail only accepts OAuth2 on most accounts.",
+        "data": {
+          "name": "Mailbox name",
+          "server": "IMAP server",
+          "security": "Encryption",
+          "port": "Port",
+          "verify_ssl": "Verify server certificate",
+          "username": "Username",
+          "password": "Password",
+          "timeout": "Timeout"
+        },
+        "data_description": {
+          "name": "Shown in the mailbox list. Defaults to the username.",
+          "port": "Leave empty for the standard port: 993 for SSL/TLS, 143 for STARTTLS or no encryption.",
+          "verify_ssl": "Only disable for a local server with a self-signed certificate (Proton Mail Bridge, home server…).",
+          "username": "Often the full email address.",
+          "password": "When editing, leave empty to keep the current password."
+        }
+      },
+      "mailbox_settings": {
+        "title": "Email scanning",
+        "description": "Connected to {server} ({folder_count} folders found).",
+        "data": {
+          "folders": "Folders to scan",
+          "dedicated": "Dedicated mailbox",
+          "search_days": "Scan emails from the last",
+          "max_emails": "Max emails per folder",
+          "unseen_only": "Unread emails only",
+          "mark_seen": "Mark emails containing a tracking number as read",
+          "enabled": "Mailbox enabled"
+        },
+        "data_description": {
+          "folders": "You can also type a folder name.",
+          "dedicated": "Parse every email, not only those from known carriers. Ideal for an address that only receives shipping notifications.",
+          "search_days": "0 = today only.",
+          "max_emails": "Most recent first. 0 = no limit.",
+          "enabled": "Uncheck to pause scanning without deleting the mailbox."
         }
       }
     },
     "error": {
       "invalid_api_key": "Invalid 17track API key",
       "cannot_connect": "Cannot connect to 17track API",
-      "imap_connection_failed": "IMAP connection failed",
+      "imap_auth_failed": "Username or password rejected by the server ({error_detail})",
+      "imap_certificate": "Invalid or self-signed server certificate. Disable \"Verify server certificate\" if you trust this server ({error_detail})",
+      "imap_ssl_error": "SSL/TLS error: check the encryption mode and port ({error_detail})",
+      "imap_unknown_host": "Server not found: check the address ({error_detail})",
+      "imap_timeout": "Server not responding: check port and encryption ({error_detail})",
+      "imap_refused": "Connection refused: check the port ({error_detail})",
+      "imap_cannot_connect": "Cannot reach the server ({error_detail})",
+      "imap_connection_failed": "IMAP connection failed ({error_detail})",
+      "mailbox_exists": "This mailbox is already configured",
+      "password_required": "Password required",
+      "no_folder": "Select at least one folder",
       "unknown": "Unknown error, check logs"
     }
   },
@@ -33,17 +86,127 @@
     "step": {
       "init": {
         "title": "Suivi de Colis — Options",
+        "description": "Configured mailboxes:\n{mailboxes}",
+        "menu_options": {
+          "general": "⚙️ General settings",
+          "mailbox_provider": "➕ Add a mailbox",
+          "mailbox_edit": "✏️ Edit a mailbox",
+          "mailbox_remove": "🗑️ Remove mailboxes"
+        }
+      },
+      "general": {
+        "title": "General settings",
         "data": {
           "archive_after_days": "Auto-archive delivered after (days, 0 = disabled)",
-          "email_interval": "Email check interval (minutes)",
-          "imap_server": "IMAP Server",
-          "imap_port": "Port",
-          "imap_user": "Username",
-          "imap_password": "Password",
-          "imap_folder": "Folder",
-          "imap_ssl": "Use SSL",
-          "imap_dedicated": "Dedicated mailbox (parse all emails, not just known carriers)"
+          "email_interval": "Email check interval"
         }
+      },
+      "mailbox_edit": {
+        "title": "Edit a mailbox",
+        "data": {
+          "id": "Mailbox"
+        }
+      },
+      "mailbox_remove": {
+        "title": "Remove mailboxes",
+        "description": "Packages already detected are kept.",
+        "data": {
+          "id": "Mailboxes to remove"
+        }
+      },
+      "mailbox_provider": {
+        "title": "Add a mailbox",
+        "description": "Pick your provider to prefill server, port and encryption, or \"Other\" to enter everything yourself.",
+        "data": {
+          "provider": "Provider"
+        }
+      },
+      "mailbox_connection": {
+        "title": "IMAP connection",
+        "description": "The connection is tested when you submit.\n\nGmail, Yahoo, iCloud: use an **app password** (the account password is rejected). Microsoft Outlook/Hotmail only accepts OAuth2 on most accounts.",
+        "data": {
+          "name": "Mailbox name",
+          "server": "IMAP server",
+          "security": "Encryption",
+          "port": "Port",
+          "verify_ssl": "Verify server certificate",
+          "username": "Username",
+          "password": "Password",
+          "timeout": "Timeout"
+        },
+        "data_description": {
+          "name": "Shown in the mailbox list. Defaults to the username.",
+          "port": "Leave empty for the standard port: 993 for SSL/TLS, 143 for STARTTLS or no encryption.",
+          "verify_ssl": "Only disable for a local server with a self-signed certificate (Proton Mail Bridge, home server…).",
+          "username": "Often the full email address.",
+          "password": "When editing, leave empty to keep the current password."
+        }
+      },
+      "mailbox_settings": {
+        "title": "Email scanning",
+        "description": "Connected to {server} ({folder_count} folders found).",
+        "data": {
+          "folders": "Folders to scan",
+          "dedicated": "Dedicated mailbox",
+          "search_days": "Scan emails from the last",
+          "max_emails": "Max emails per folder",
+          "unseen_only": "Unread emails only",
+          "mark_seen": "Mark emails containing a tracking number as read",
+          "enabled": "Mailbox enabled"
+        },
+        "data_description": {
+          "folders": "You can also type a folder name.",
+          "dedicated": "Parse every email, not only those from known carriers. Ideal for an address that only receives shipping notifications.",
+          "search_days": "0 = today only.",
+          "max_emails": "Most recent first. 0 = no limit.",
+          "enabled": "Uncheck to pause scanning without deleting the mailbox."
+        }
+      }
+    },
+    "error": {
+      "imap_auth_failed": "Username or password rejected by the server ({error_detail})",
+      "imap_certificate": "Invalid or self-signed server certificate. Disable \"Verify server certificate\" if you trust this server ({error_detail})",
+      "imap_ssl_error": "SSL/TLS error: check the encryption mode and port ({error_detail})",
+      "imap_unknown_host": "Server not found: check the address ({error_detail})",
+      "imap_timeout": "Server not responding: check port and encryption ({error_detail})",
+      "imap_refused": "Connection refused: check the port ({error_detail})",
+      "imap_cannot_connect": "Cannot reach the server ({error_detail})",
+      "imap_connection_failed": "IMAP connection failed ({error_detail})",
+      "mailbox_exists": "This mailbox is already configured",
+      "password_required": "Password required",
+      "no_folder": "Select at least one folder"
+    }
+  },
+  "selector": {
+    "provider": {
+      "options": {
+        "custom": "Other (manual setup)",
+        "gmail": "Gmail",
+        "outlook": "Outlook / Hotmail / Microsoft 365",
+        "yahoo": "Yahoo Mail",
+        "icloud": "iCloud Mail",
+        "orange": "Orange / Wanadoo",
+        "free": "Free",
+        "sfr": "SFR / Neuf",
+        "laposte": "La Poste (laposte.net)",
+        "gmx": "GMX",
+        "ionos": "IONOS",
+        "ovh": "OVHcloud (shared hosting mail)",
+        "proton_bridge": "Proton Mail (via Proton Mail Bridge)"
+      }
+    },
+    "security": {
+      "options": {
+        "ssl": "SSL/TLS (recommended, port 993)",
+        "starttls": "STARTTLS (port 143)",
+        "none": "No encryption (not recommended)"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "quota_remain": {
+        "name": "Remaining 17track quota"
       }
     }
   }

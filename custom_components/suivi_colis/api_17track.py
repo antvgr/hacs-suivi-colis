@@ -235,6 +235,17 @@ class Api17TrackClient:
                 track_info = item.get("track_info") or {}
                 output[number] = self._parse_track_data(track_info)
 
+            # Typically -18019909 "no tracking information at this time": a newly
+            # registered number 17track has not fetched from the carrier yet
+            for item in data.get("rejected") or []:
+                error = item.get("error") or {}
+                _LOGGER.debug(
+                    "17track has no data yet for %s (%s: %s)",
+                    item.get("number"),
+                    error.get("code"),
+                    error.get("message"),
+                )
+
         return output
 
     def _parse_track_data(self, track_info: dict) -> dict:

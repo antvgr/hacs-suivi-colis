@@ -123,6 +123,7 @@ class SuiviColisCard extends HTMLElement {
           location: state.attributes.location || "",
           events: state.attributes.events || [],
           sub_status: state.attributes.sub_status || "",
+          last_updated: state.attributes.last_updated || "",
           delivered_at: state.attributes.delivered_at || "",
           eta_from: state.attributes.estimated_delivery_from || "",
           eta_to: state.attributes.estimated_delivery_to || "",
@@ -539,7 +540,10 @@ class SuiviColisCard extends HTMLElement {
   }
 
   _renderPackage(pkg) {
-    const sc = STATUS_CONFIG[pkg.status] || STATUS_CONFIG.unknown;
+    // Never updated yet: 17track is still fetching the carrier's data
+    const sc = pkg.status === "unknown" && !pkg.last_updated
+      ? { ...STATUS_CONFIG.unknown, label: "En attente" }
+      : STATUS_CONFIG[pkg.status] || STATUS_CONFIG.unknown;
     const iconUrl = this._getCarrierIcon(pkg.carrier);
     const carrierLabel = pkg.carrier !== "unknown" ? pkg.carrier.charAt(0).toUpperCase() + pkg.carrier.slice(1) : "";
 

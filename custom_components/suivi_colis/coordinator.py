@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
@@ -30,6 +31,9 @@ from .models import Package, PackageSource, PackageStatus
 from .store import SuiviColisStore
 
 _LOGGER = logging.getLogger(__name__)
+
+# Seconds after a registration at which to poll 17track again
+FOLLOWUP_REFRESH_DELAYS = (60, 180, 600)
 
 
 class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
@@ -59,6 +63,7 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
         self.mailbox_status: dict[str, dict] = {}
         # Last /getquota answer (quota_total, quota_used, quota_remain, ...)
         self.quota: dict | None = None
+        self._followup_unsubs: list = []
 
     @property
     def mailboxes(self) -> list[dict]:
@@ -271,7 +276,34 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
 
         # Trigger an immediate refresh
         await self.async_request_refresh()
+        self._schedule_followup_refreshes()
         return True
+
+    def _schedule_followup_refreshes(self) -> None:
+        """Poll again shortly after a registration.
+
+        17track fetches a new number from the carrier within seconds to several
+        minutes, so the immediate refresh usually comes too early; without this
+        the package would stay "unknown" until the next 30-minute cycle.
+        """
+        for unsub in self._followup_unsubs:
+            unsub()
+        self._followup_unsubs = [
+            async_call_later(self.hass, delay, self._async_followup_refresh)
+            for delay in FOLLOWUP_REFRESH_DELAYS
+        ]
+
+    async def _async_followup_refresh(self, _now: datetime) -> None:
+        """Refresh only while a package still waits for its first data."""
+        if any(p.last_updated is None for p in self.store.active_packages.values()):
+            await self.async_request_refresh()
+
+    async def async_shutdown(self) -> None:
+        """Cancel pending follow-up refreshes."""
+        for unsub in self._followup_unsubs:
+            unsub()
+        self._followup_unsubs = []
+        await super().async_shutdown()
 
     def _remove_entity(self, tracking_number: str) -> None:
         """Remove the entity from HA entity registry."""

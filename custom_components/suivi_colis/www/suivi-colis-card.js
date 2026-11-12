@@ -3,7 +3,7 @@
  * Auto-discovers Suivi de Colis entities by tracking_number attribute
  */
 
-const CARD_VERSION = "1.3.0";
+const CARD_VERSION = "1.4.0";
 
 // Status config: label, color, sort order
 const STATUS_CONFIG = {
@@ -17,6 +17,31 @@ const STATUS_CONFIG = {
   unknown: { label: "Inconnu", color: "#9E9E9E", order: 7 },
   expired: { label: "Expire", color: "#795548", order: 8 },
   delivered: { label: "Livre", color: "#4CAF50", order: 9 },
+};
+
+// 17track sub-statuses worth showing (the "_Other" ones add nothing to the chip)
+const SUB_STATUS_LABELS = {
+  NotFound_InvalidCode: "Numéro invalide",
+  InTransit_PickedUp: "Pris en charge",
+  InTransit_Departure: "Départ",
+  InTransit_Arrival: "Arrivé",
+  InTransit_CustomsProcessing: "En douane",
+  InTransit_CustomsReleased: "Dédouané",
+  InTransit_CustomsRequiringInformation: "Douane : informations requises",
+  DeliveryFailure_NoBody: "Destinataire absent",
+  DeliveryFailure_Security: "Problème de sécurité",
+  DeliveryFailure_Rejected: "Refusé par le destinataire",
+  DeliveryFailure_InvalidAddress: "Adresse invalide",
+  Exception_Returning: "Retour à l'expéditeur",
+  Exception_Returned: "Retourné à l'expéditeur",
+  Exception_NoBody: "Destinataire absent",
+  Exception_Security: "Problème de sécurité",
+  Exception_Damage: "Endommagé",
+  Exception_Rejected: "Refusé",
+  Exception_Delayed: "Retardé",
+  Exception_Lost: "Perdu",
+  Exception_Destroyed: "Détruit",
+  Exception_Cancel: "Annulé",
 };
 
 // Carrier options for the dropdown
@@ -97,6 +122,10 @@ class SuiviColisCard extends HTMLElement {
           info_text: state.attributes.info_text || "",
           location: state.attributes.location || "",
           events: state.attributes.events || [],
+          sub_status: state.attributes.sub_status || "",
+          delivered_at: state.attributes.delivered_at || "",
+          eta_from: state.attributes.estimated_delivery_from || "",
+          eta_to: state.attributes.estimated_delivery_to || "",
         });
       }
     }
@@ -489,6 +518,26 @@ class SuiviColisCard extends HTMLElement {
     });
   }
 
+  _formatDay(iso) {
+    const d = new Date(iso);
+    if (isNaN(d)) return "";
+    return d.toLocaleDateString("fr-FR", { weekday: "short", day: "2-digit", month: "2-digit" });
+  }
+
+  _dateLine(pkg) {
+    if (pkg.status === "delivered" && pkg.delivered_at) {
+      const d = new Date(pkg.delivered_at);
+      if (isNaN(d)) return "";
+      return `Livré le ${this._formatDay(pkg.delivered_at)} à ${d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`;
+    }
+    if (pkg.status === "delivered" || pkg.status === "expired") return "";
+    const from = pkg.eta_from ? this._formatDay(pkg.eta_from) : "";
+    const to = pkg.eta_to ? this._formatDay(pkg.eta_to) : "";
+    if (from && to && from !== to) return `Livraison prévue entre ${from} et ${to}`;
+    if (from || to) return `Livraison prévue ${from || to}`;
+    return "";
+  }
+
   _renderPackage(pkg) {
     const sc = STATUS_CONFIG[pkg.status] || STATUS_CONFIG.unknown;
     const iconUrl = this._getCarrierIcon(pkg.carrier);
@@ -498,6 +547,9 @@ class SuiviColisCard extends HTMLElement {
     const showTracking = displayName !== pkg.tracking_number;
 
     const infoLine = [this._truncate(pkg.info_text), pkg.location].filter(Boolean).join(" \u2014 ");
+    let subStatus = SUB_STATUS_LABELS[pkg.sub_status] || "";
+    if (subStatus && (pkg.info_text || "").toLowerCase().includes(subStatus.toLowerCase())) subStatus = "";
+    const dateLine = this._dateLine(pkg);
     const isExpanded = this._expandedPackage === pkg.tracking_number;
     const hasEvents = pkg.events && pkg.events.length > 0;
 
@@ -527,6 +579,9 @@ class SuiviColisCard extends HTMLElement {
             <div class="name">${displayName}</div>
             ${showTracking ? `<div class="tracking">${pkg.tracking_number}</div>` : ""}
             ${infoLine ? `<div class="detail">${infoLine}</div>` : ""}
+            ${subStatus || dateLine
+              ? `<div class="detail" style="color:${sc.color};white-space:normal">${[subStatus, dateLine].filter(Boolean).join(" \u00b7 ")}</div>`
+              : ""}
           </div>
         </div>
         <span class="chip" style="background:${sc.color}">${sc.label}</span>
@@ -557,7 +612,7 @@ window.customCards.push({
   name: "Suivi de Colis",
   description: "Suivi de colis avec detection automatique",
   preview: true,
-  documentationURL: "https://github.com/hello-lemon/suivi-colis",
+  documentationURL: "https://github.com/hello-lemon/hacs-suivi-colis",
 });
 
 console.info(

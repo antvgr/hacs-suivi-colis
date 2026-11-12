@@ -4,28 +4,26 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from functools import partial
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.util import dt as dt_util
 
 from .api_17track import Api17TrackClient, Api17TrackError, Api17TrackRateLimited
 from .carrier_detect import detect_carrier_from_number
 from .const import (
     CONF_ARCHIVE_AFTER_DAYS,
     CONF_EMAIL_INTERVAL,
-    CONF_IMAP_FOLDER,
-    CONF_IMAP_PASSWORD,
-    CONF_IMAP_PORT,
-    CONF_IMAP_SERVER,
-    CONF_IMAP_DEDICATED,
-    CONF_IMAP_SSL,
-    CONF_IMAP_USER,
+    CONF_MAILBOXES,
     DEFAULT_ARCHIVE_AFTER_DAYS,
     DEFAULT_EMAIL_INTERVAL,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
+    MB_ENABLED,
+    MB_ID,
+    MB_NAME,
+    MB_SERVER,
 )
 from .email_parser import ExtractedPackage, run_imap_fetch
 from .models import Package, PackageSource, PackageStatus
@@ -57,11 +55,24 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
         self.config = config
         self.options = options
         self._last_email_check: datetime | None = None
+        # Per-mailbox status of the last check: {id: {"last_check", "error", "found"}}
+        self.mailbox_status: dict[str, dict] = {}
+        # Last /getquota answer (quota_total, quota_used, quota_remain, ...)
+        self.quota: dict | None = None
+
+    @property
+    def mailboxes(self) -> list[dict]:
+        """Return the enabled mailboxes."""
+        return [
+            mb
+            for mb in self.options.get(CONF_MAILBOXES, [])
+            if mb.get(MB_ENABLED, True)
+        ]
 
     @property
     def imap_configured(self) -> bool:
-        """Return True if IMAP is configured."""
-        return bool(self.config.get(CONF_IMAP_SERVER))
+        """Return True if at least one mailbox is enabled."""
+        return bool(self.mailboxes)
 
     @property
     def archive_after_days(self) -> int:
@@ -84,6 +95,9 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
 
         # 2. Update active packages via 17track
         await self._update_tracking()
+
+        # 2b. Quota left on the 17track account
+        await self._update_quota()
 
         # 3. Auto-remove delivered
         await self._auto_remove_delivered()
@@ -122,6 +136,11 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
 
             old_status = pkg.status
             pkg.status = data["status"]
+            pkg.sub_status = data.get("sub_status", "")
+            pkg.sub_status_descr = data.get("sub_status_descr", "")
+            pkg.estimated_delivery_from = data.get("estimated_delivery_from")
+            pkg.estimated_delivery_to = data.get("estimated_delivery_to")
+            pkg.estimated_delivery_source = data.get("estimated_delivery_source", "")
             pkg.info_text = data["info_text"]
             pkg.location = data["location"]
             pkg.events = data["events"]
@@ -130,31 +149,47 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
             if data.get("carrier"):
                 pkg.carrier = data["carrier"]
 
-            if pkg.status == PackageStatus.DELIVERED and old_status != PackageStatus.DELIVERED:
-                pkg.delivered_at = now
-                _LOGGER.info("Package %s delivered!", pkg.display_name)
+            if pkg.status == PackageStatus.DELIVERED and (
+                old_status != PackageStatus.DELIVERED or pkg.delivered_at is None
+            ):
+                # Real delivery time from the carrier, in local naive time like
+                # the other timestamps of the package; detection time otherwise
+                delivered = data.get("delivered_time")
+                pkg.delivered_at = (
+                    dt_util.as_local(delivered).replace(tzinfo=None)
+                    if delivered
+                    else now
+                )
+                if old_status != PackageStatus.DELIVERED:
+                    _LOGGER.info("Package %s delivered!", pkg.display_name)
+
+    async def _update_quota(self) -> None:
+        """Refresh the 17track quota (free call)."""
+        try:
+            self.quota = await self.api_client.get_quota()
+        except Api17TrackError as err:
+            _LOGGER.debug("Could not fetch 17track quota: %s", err)
 
     async def _check_emails(self) -> None:
-        """Check IMAP for new tracking numbers."""
+        """Check every enabled mailbox for new tracking numbers."""
         known = set(self.store.packages.keys())
+        extracted: list[ExtractedPackage] = []
 
-        try:
-            extracted: list[ExtractedPackage] = await self.hass.async_add_executor_job(
-                partial(
-                    run_imap_fetch,
-                    server=self.config[CONF_IMAP_SERVER],
-                    port=self.config[CONF_IMAP_PORT],
-                    user=self.config[CONF_IMAP_USER],
-                    password=self.config[CONF_IMAP_PASSWORD],
-                    folder=self.config.get(CONF_IMAP_FOLDER, "INBOX"),
-                    ssl=self.config.get(CONF_IMAP_SSL, True),
-                    dedicated=self.config.get(CONF_IMAP_DEDICATED, False),
-                    known_numbers=known,
+        for mailbox in self.mailboxes:
+            label = mailbox.get(MB_NAME) or mailbox.get(MB_SERVER)
+            status = {"last_check": datetime.now(), "error": None, "found": 0}
+            try:
+                # `known` is shared so a number found in two mailboxes is added once
+                found: list[ExtractedPackage] = await self.hass.async_add_executor_job(
+                    run_imap_fetch, mailbox, known
                 )
-            )
-        except Exception as err:
-            _LOGGER.error("Email check failed: %s", err)
-            return
+            except Exception as err:
+                _LOGGER.error("Email check failed for mailbox %s: %s", label, err)
+                status["error"] = str(err) or type(err).__name__
+            else:
+                status["found"] = len(found)
+                extracted.extend(found)
+            self.mailbox_status[mailbox[MB_ID]] = status
 
         for item in extracted:
             await self.add_package(

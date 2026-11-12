@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import logging
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -48,6 +49,9 @@ async def async_setup_entry(
 
         if new_entities:
             async_add_entities(new_entities)
+
+    # Account-level sensor: 17track quota
+    async_add_entities([SuiviColisQuotaSensor(coordinator, entry)])
 
     # Add existing packages
     _async_add_new_sensors()
@@ -115,6 +119,11 @@ class SuiviColisSensor(CoordinatorEntity[SuiviColisCoordinator], SensorEntity):
             "added_at": pkg.added_at.isoformat() if pkg.added_at else None,
             "last_updated": pkg.last_updated.isoformat() if pkg.last_updated else None,
             "delivered_at": pkg.delivered_at.isoformat() if pkg.delivered_at else None,
+            "sub_status": pkg.sub_status,
+            "sub_status_descr": pkg.sub_status_descr,
+            "estimated_delivery_from": _iso(pkg.estimated_delivery_from),
+            "estimated_delivery_to": _iso(pkg.estimated_delivery_to),
+            "estimated_delivery_source": pkg.estimated_delivery_source,
             "events_count": len(pkg.events),
             "events": [
                 {
@@ -136,3 +145,49 @@ class SuiviColisSensor(CoordinatorEntity[SuiviColisCoordinator], SensorEntity):
     async def async_will_remove_from_hass(self) -> None:
         """Clean up when removed."""
         _LOGGER.debug("Removing sensor for %s", self._tracking_number)
+
+
+def _iso(value) -> str | None:
+    return value.isoformat() if value else None
+
+
+class SuiviColisQuotaSensor(CoordinatorEntity[SuiviColisCoordinator], SensorEntity):
+    """Remaining 17track tracking quota (1 credit per new tracking number)."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "quota_remain"
+    _attr_icon = "mdi:counter"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "suivis"
+
+    def __init__(self, coordinator: SuiviColisCoordinator, entry: ConfigEntry) -> None:
+        """Initialize."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{DOMAIN}_quota_remain"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name="17track",
+            manufacturer="17TRACK",
+            entry_type=DeviceEntryType.SERVICE,
+            configuration_url="https://api.17track.net/admin/dashboard",
+        )
+
+    @property
+    def available(self) -> bool:
+        """Available once the quota has been fetched."""
+        return super().available and self.coordinator.quota is not None
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the remaining quota."""
+        return (self.coordinator.quota or {}).get("quota_remain")
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Return the other quota counters."""
+        quota = self.coordinator.quota or {}
+        return {
+            key: quota.get(key)
+            for key in ("quota_total", "quota_used", "today_used", "max_track_daily")
+            if key in quota
+        }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from pathlib import Path
 
 import aiohttp
@@ -13,15 +14,50 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import Event, HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
 
-from .api_17track import Api17TrackClient
-from .const import DOMAIN, CONF_API_KEY
+from .api_17track import Api17TrackClient, to_17track_lang
+from .const import (
+    CONF_API_KEY,
+    CONF_IMAP_DEDICATED,
+    CONF_IMAP_FOLDER,
+    CONF_IMAP_PASSWORD,
+    CONF_IMAP_PORT,
+    CONF_IMAP_SERVER,
+    CONF_IMAP_SSL,
+    CONF_IMAP_USER,
+    CONF_MAILBOXES,
+    DEFAULT_IMAP_FOLDER,
+    DEFAULT_MAX_EMAILS,
+    DEFAULT_SEARCH_DAYS,
+    DEFAULT_TIMEOUT,
+    DOMAIN,
+    MB_DEDICATED,
+    MB_ENABLED,
+    MB_FOLDERS,
+    MB_ID,
+    MB_MARK_SEEN,
+    MB_MAX_EMAILS,
+    MB_NAME,
+    MB_PASSWORD,
+    MB_PORT,
+    MB_PROVIDER,
+    MB_SEARCH_DAYS,
+    MB_SECURITY,
+    MB_SERVER,
+    MB_TIMEOUT,
+    MB_UNSEEN_ONLY,
+    MB_USERNAME,
+    MB_VERIFY_SSL,
+    PROVIDER_CUSTOM,
+    SECURITY_SSL,
+    SECURITY_STARTTLS,
+)
 from .coordinator import SuiviColisCoordinator
 from .store import SuiviColisStore
 
 _LOGGER = logging.getLogger(__name__)
 
 CARD_JS_URL = "/suivi_colis/suivi-colis-card.js"
-CARD_JS_VERSION = "1.3.0"
+CARD_JS_VERSION = "1.4.0"
 
 PLATFORMS = ["sensor"]
 
@@ -111,13 +147,64 @@ async def _async_register_lovelace_resource(hass: HomeAssistant, url: str) -> No
         _LOGGER.error("Could not auto-register Lovelace resource: %s — add manually: %s", err, url)
 
 
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate old config entries."""
+    if entry.version > 2:
+        return False  # Downgrade not supported
+
+    if entry.version == 1:
+        # v1: a single IMAP mailbox stored in entry.data
+        # v2: a list of mailboxes stored in entry.options[CONF_MAILBOXES]
+        data = dict(entry.data)
+        options = dict(entry.options)
+        mailboxes = list(options.get(CONF_MAILBOXES, []))
+
+        if data.get(CONF_IMAP_SERVER):
+            dedicated = data.get(CONF_IMAP_DEDICATED, False)
+            mailboxes.append(
+                {
+                    MB_ID: uuid.uuid4().hex,
+                    MB_PROVIDER: PROVIDER_CUSTOM,
+                    MB_NAME: data.get(CONF_IMAP_USER) or data[CONF_IMAP_SERVER],
+                    MB_SERVER: data[CONF_IMAP_SERVER],
+                    MB_PORT: data.get(CONF_IMAP_PORT, 993),
+                    # "SSL" unchecked was meant as STARTTLS in v1
+                    MB_SECURITY: SECURITY_SSL
+                    if data.get(CONF_IMAP_SSL, True)
+                    else SECURITY_STARTTLS,
+                    MB_VERIFY_SSL: True,
+                    MB_TIMEOUT: DEFAULT_TIMEOUT,
+                    MB_USERNAME: data.get(CONF_IMAP_USER, ""),
+                    MB_PASSWORD: data.get(CONF_IMAP_PASSWORD, ""),
+                    MB_FOLDERS: [data.get(CONF_IMAP_FOLDER) or DEFAULT_IMAP_FOLDER],
+                    MB_DEDICATED: dedicated,
+                    MB_UNSEEN_ONLY: False,
+                    MB_MARK_SEEN: dedicated,
+                    MB_SEARCH_DAYS: DEFAULT_SEARCH_DAYS,
+                    MB_MAX_EMAILS: DEFAULT_MAX_EMAILS,
+                    MB_ENABLED: True,
+                }
+            )
+
+        new_data = {k: v for k, v in data.items() if not k.startswith("imap_")}
+        options[CONF_MAILBOXES] = mailboxes
+        hass.config_entries.async_update_entry(
+            entry, data=new_data, options=options, version=2
+        )
+        _LOGGER.info("Migrated Suivi de Colis config to v2 (%d mailbox(es))", len(mailboxes))
+
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Suivi de Colis from a config entry."""
     hass.data.setdefault(DOMAIN, {})
 
     # Create HTTP session and API client
     session = aiohttp.ClientSession()
-    api_client = Api17TrackClient(session, entry.data[CONF_API_KEY])
+    api_client = Api17TrackClient(
+        session, entry.data[CONF_API_KEY], lang=to_17track_lang(hass.config.language)
+    )
 
     # Load stored packages
     store = SuiviColisStore(hass)

@@ -134,3 +134,7 @@ Chaque merge sur `main` publie automatiquement une nouvelle version (tag `vX.Y.Z
   - tout le reste (`fix: …`, `docs: …`…) → correctif (1.1.**1**).
 
 Les notes de version reprennent les pull requests fusionnées (ou les commits s'il n'y en a pas).
+
+## Licence
+
+MIT, voir [LICENSE](LICENSE).

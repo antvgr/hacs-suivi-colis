@@ -107,3 +107,30 @@ La carte affiche pour chaque colis :
 Détection automatique : Chronopost, Colissimo, La Poste, DHL, UPS, Amazon, Cainiao/AliExpress, Colis Privé.
 
 Tous les 1200+ transporteurs supportés par 17track fonctionnent en ajout manuel.
+
+## Développement
+
+### Tests
+
+```bash
+pip install -r requirements_test.txt
+pytest
+```
+
+### Intégration continue
+
+À chaque push et pull request, GitHub Actions lance :
+- **Hassfest** : validation officielle Home Assistant (manifest, traductions, services) ;
+- **HACS** : validation du dépôt pour HACS ;
+- **Tests** : la suite `pytest`.
+
+### Versions
+
+Chaque merge sur `main` publie automatiquement une nouvelle version (tag `vX.Y.Z`, release GitHub utilisée par HACS, `CHANGELOG.md` et version du `manifest.json` mis à jour) :
+- version du `manifest.json` augmentée à la main dans la PR → c'est elle qui est publiée ;
+- sinon, d'après les messages de commit depuis la dernière version :
+  - `feat: …` → version mineure (1.**2**.0) ;
+  - `type!: …` ou `BREAKING CHANGE` dans le message → version majeure (**2**.0.0) ;
+  - tout le reste (`fix: …`, `docs: …`…) → correctif (1.1.**1**).
+
+Les notes de version reprennent les pull requests fusionnées (ou les commits s'il n'y en a pas).

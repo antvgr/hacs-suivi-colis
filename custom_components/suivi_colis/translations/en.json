@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "17track API Key",
-        "description": "Enter your 17track API key. Get one for free at https://api.17track.net",
+        "description": "Enter your 17track API key. Create an account on {api_url} to get one.",
         "data": {
           "api_key": "API Key"
         }

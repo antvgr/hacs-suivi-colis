@@ -376,6 +376,7 @@ class SuiviColisConfigFlow(MailboxFlowMixin, config_entries.ConfigFlow, domain=D
                 }
             ),
             errors=errors,
+            description_placeholders={"api_url": "https://api.17track.net"},
         )
 
     async def async_step_mailboxes(

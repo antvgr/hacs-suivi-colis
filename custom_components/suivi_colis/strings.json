@@ -91,7 +91,8 @@
           "general": "⚙️ General settings",
           "mailbox_provider": "➕ Add a mailbox",
           "mailbox_edit": "✏️ Edit a mailbox",
-          "mailbox_remove": "🗑️ Remove mailboxes"
+          "mailbox_remove": "🗑️ Remove mailboxes",
+          "webhook": "📡 Real-time notifications (webhook)"
         }
       },
       "general": {
@@ -161,6 +162,13 @@
           "max_emails": "Most recent first. 0 = no limit.",
           "enabled": "Uncheck to pause scanning without deleting the mailbox."
         }
+      },
+      "webhook": {
+        "title": "Real-time notifications (webhook)",
+        "description": "17track can notify Home Assistant as soon as a package changes, instead of waiting for the next 30-minute cycle.\n\n1. Enable the option below.\n2. Copy this URL: `{webhook_url}`\n3. Paste it in the 17track dashboard ({dashboard_url}), WebHook section, then save and test.\n\nHome Assistant must be reachable from the Internet (Nabu Casa or a configured external URL). Calls are verified with the 17track signature.",
+        "data": {
+          "webhook_enabled": "Receive 17track notifications"
+        }
       }
     },
     "error": {
@@ -174,7 +182,8 @@
       "imap_connection_failed": "IMAP connection failed ({error_detail})",
       "mailbox_exists": "This mailbox is already configured",
       "password_required": "Password required",
-      "no_folder": "Select at least one folder"
+      "no_folder": "Select at least one folder",
+      "no_external_url": "No external URL: set up Nabu Casa or an external URL in Settings > System > Network"
     }
   },
   "selector": {
@@ -208,6 +217,17 @@
       "quota_remain": {
         "name": "Remaining 17track quota"
       }
+    }
+  },
+  "exceptions": {
+    "carrier_required": {
+      "message": "Provide a carrier or a 17track carrier code."
+    },
+    "package_not_found": {
+      "message": "Package {tracking_number} is not tracked."
+    },
+    "change_carrier_failed": {
+      "message": "17track refused the carrier change: {error}"
     }
   }
 }

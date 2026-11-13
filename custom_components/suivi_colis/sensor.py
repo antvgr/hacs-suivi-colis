@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import slugify
 
 from .const import DOMAIN, STATUS_ICONS
 from .coordinator import SuiviColisCoordinator
@@ -77,7 +78,15 @@ class SuiviColisSensor(CoordinatorEntity[SuiviColisCoordinator], SensorEntity):
         super().__init__(coordinator)
         self._tracking_number = package.tracking_number
         self._attr_unique_id = f"{DOMAIN}_{package.tracking_number}"
-        self._attr_name = package.tracking_number
+        # Entity id stays based on the tracking number (as in 1.0.x), the
+        # displayed name is the package name given by the user, if any
+        self.entity_id = f"sensor.{slugify(package.tracking_number)}"
+
+    @property
+    def name(self) -> str:
+        """Package name, or tracking number when it has none."""
+        pkg = self._package
+        return pkg.display_name if pkg else self._tracking_number
 
     @property
     def _package(self) -> Package | None:
@@ -112,7 +121,11 @@ class SuiviColisSensor(CoordinatorEntity[SuiviColisCoordinator], SensorEntity):
         attrs = {
             "tracking_number": pkg.tracking_number,
             "carrier": pkg.carrier,
-            "friendly_name": pkg.friendly_name,
+            "carrier_code": pkg.carrier_code,
+            "tracking_stopped": pkg.tracking_stopped,
+            # "friendly_name" is overwritten by Home Assistant with the entity
+            # name: the package's own name goes in package_name
+            "package_name": pkg.friendly_name,
             "info_text": pkg.info_text,
             "location": pkg.location,
             "source": pkg.source,

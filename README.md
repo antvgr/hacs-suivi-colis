@@ -15,7 +15,7 @@ Suivi de plus de 1200 transporteurs (Chronopost, Colissimo, DHL, UPS, Amazon, Ca
 - **Détection automatique du transporteur** à partir du format du numéro de suivi, avec fallback auto-détection 17track si rejeté
 - **Scan IMAP multi-boîtes** : détection automatique des numéros de suivi depuis une ou plusieurs boîtes mail (perso ou dédiées)
 - **Suppression automatique** des colis livrés après un délai configurable
-- **Carte Lovelace** incluse avec historique dépliable au clic et suppression des colis livrés
+- **Carte Lovelace** incluse, au style de Home Assistant (thèmes clair et sombre) : résumé en badges, colis regroupés par urgence (action requise, en route, livrés), date de livraison prévue, historique au clic, ajout d'un colis avec un nom et un transporteur.
 
 ## Installation
 
@@ -63,6 +63,15 @@ Pour chaque boîte :
 
 Une configuration créée avec une version précédente (une seule boîte) est migrée automatiquement.
 
+### Notifications en temps réel (webhook, optionnel)
+
+Par défaut, l'intégration interroge 17track toutes les 30 minutes. Avec le webhook, 17track prévient Home Assistant dès qu'un colis change :
+
+1. **Paramètres → Appareils et services → Suivi de Colis → Configurer → Notifications en temps réel** : activer l'option et copier l'URL affichée ;
+2. la coller dans le [tableau de bord 17track](https://api.17track.net/admin/settings), section **WebHook**, puis enregistrer et tester.
+
+Home Assistant doit être joignable depuis Internet : avec Nabu Casa, l'URL est créée automatiquement ; sinon, il faut une URL externe (Paramètres → Système → Réseau). Chaque appel est vérifié avec la signature 17track (`sign`), une URL connue ne suffit donc pas pour envoyer de fausses données. Le suivi par interrogation reste actif en secours.
+
 ### Options
 
 - **Archivage automatique** : nombre de jours après livraison avant suppression (défaut : 2, 0 = désactivé)
@@ -76,6 +85,7 @@ Une configuration créée avec une version précédente (une seule boîte) est m
 | `suivi_colis.remove_package` | Arrêter le suivi d'un colis |
 | `suivi_colis.refresh` | Forcer une mise à jour immédiate |
 | `suivi_colis.archive_delivered` | Archiver tous les colis livrés |
+| `suivi_colis.change_carrier` | Suivre un colis chez un autre transporteur (transporteur mal détecté, 5 changements max par colis) |
 
 ### Exemple : ajouter un colis
 
@@ -89,18 +99,21 @@ data:
 
 ## Carte Lovelace
 
-La carte custom s'enregistre automatiquement au démarrage de Home Assistant.
+La carte s'enregistre automatiquement au démarrage de Home Assistant : sur un tableau de bord, **Ajouter une carte**, puis chercher **Suivi de Colis**. Elle suit le thème de Home Assistant (clair, sombre ou personnalisé).
 
-1. Aller sur un dashboard → **Ajouter une carte**
-2. Chercher **"Suivi de Colis"** dans le picker
-3. Aucune configuration nécessaire
+- **Badges de résumé** : colis livrés aujourd'hui, à retirer, en route, en problème.
+- **Colis regroupés par urgence** : action requise (échec de livraison, à retirer, problème, suivi arrêté), en route, livrés. Chaque ligne indique le statut détaillé, le transporteur, le lieu, et à droite la date de livraison prévue ou le statut.
+- **Clic sur un colis** : historique complet des événements, numéro de suivi, transporteur, dernière mise à jour et bouton **Supprimer**.
+- **Bouton +** : ajouter un colis avec son numéro, un **nom** (facultatif) et le transporteur (détection automatique par défaut).
+- **Archiver les livrés** en bas de la carte.
 
-La carte affiche pour chaque colis :
-- Logo du transporteur, nom, numéro de suivi
-- Statut coloré et dernière info/localisation
-- **Clic sur un colis** : déplie l'historique complet des événements
-- **Bouton "+"** : ajouter un colis avec sélecteur de transporteur (Auto, La Poste, Chronopost, UPS, DHL, AliExpress, Colis Privé)
-- **Bouton "x"** sur les colis livrés : suppression manuelle
+Options (éditeur visuel ou YAML) :
+
+```yaml
+type: custom:suivi-colis-card
+title: Colis          # optionnel
+show_delivered: true  # afficher les colis livrés
+```
 
 ## Transporteurs supportés
 

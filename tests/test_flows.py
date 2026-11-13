@@ -83,7 +83,9 @@ async def test_config_flow_two_mailboxes(hass, api_ok):
 
     res = await hass.config_entries.flow.async_configure(fid, {"next_step_id": "finish"})
     assert res["type"] == FlowResultType.CREATE_ENTRY
-    assert res["data"] == {"api_key": "k"}
+    assert res["data"]["api_key"] == "k"
+    assert len(res["data"]["webhook_id"]) == 64  # created with the entry (v2.2)
+    assert res["result"].minor_version == 2
     mbs = res["options"][CONF_MAILBOXES]
     assert [m["username"] for m in mbs] == ["a@gmail.com", "b@gmail.com"]
     assert mbs[1]["folders"] == ["INBOX", "Livraisons"]
@@ -166,7 +168,7 @@ async def test_options_edit_keeps_password(hass):
     entry = _entry(hass, [dict(MB)])
     res = await hass.config_entries.options.async_init(entry.entry_id)
     assert res["type"] == FlowResultType.MENU
-    assert set(res["menu_options"]) == {"general", "mailbox_provider", "mailbox_edit", "mailbox_remove"}
+    assert set(res["menu_options"]) == {"general", "mailbox_provider", "mailbox_edit", "mailbox_remove", "webhook"}
     res = await hass.config_entries.options.async_configure(res["flow_id"], {"next_step_id": "mailbox_edit"})
     res = await hass.config_entries.options.async_configure(res["flow_id"], {"id": "abc"})
     assert res["step_id"] == "mailbox_connection"
@@ -227,7 +229,7 @@ async def test_options_remove_and_general(hass):
 async def test_options_menu_without_mailboxes(hass):
     entry = _entry(hass, [])
     res = await hass.config_entries.options.async_init(entry.entry_id)
-    assert res["menu_options"] == ["general", "mailbox_provider"]
+    assert res["menu_options"] == ["general", "mailbox_provider", "webhook"]
 
 
 @pytest.mark.parametrize("ssl_flag,expected", [(True, "ssl"), (False, "starttls")])
@@ -249,8 +251,8 @@ async def test_migration_v1(hass, ssl_flag, expected):
     )
     entry.add_to_hass(hass)
     assert await async_migrate_entry(hass, entry)
-    assert entry.version == 2
-    assert entry.data == {"api_key": "k"}
+    assert (entry.version, entry.minor_version) == (2, 2)
+    assert set(entry.data) == {"api_key", "webhook_id"}
     assert entry.options["archive_after_days"] == 3
     (mb,) = entry.options[CONF_MAILBOXES]
     assert mb["server"] == "imap.free.fr" and mb["security"] == expected

@@ -11,6 +11,8 @@ CONF_API_KEY = "api_key"
 CONF_ARCHIVE_AFTER_DAYS = "archive_after_days"
 CONF_EMAIL_INTERVAL = "email_interval"
 CONF_MAILBOXES = "mailboxes"
+CONF_WEBHOOK_ID = "webhook_id"  # entry.data, secret part of the webhook URL
+CONF_WEBHOOK_ENABLED = "webhook_enabled"  # entry.options
 
 # Legacy single-mailbox keys (config entry v1, migrated to CONF_MAILBOXES)
 CONF_IMAP_SERVER = "imap_server"
@@ -82,6 +84,7 @@ API_17TRACK_BASE = "https://api.17track.net/track/v2.4"
 API_17TRACK_REGISTER = f"{API_17TRACK_BASE}/register"
 API_17TRACK_GETTRACKINFO = f"{API_17TRACK_BASE}/gettrackinfo"
 API_17TRACK_STOPTRACK = f"{API_17TRACK_BASE}/stoptrack"
+API_17TRACK_CHANGECARRIER = f"{API_17TRACK_BASE}/changecarrier"
 API_17TRACK_QUOTA_ERRORS = (-18019907, -18019908)  # daily limit / quota exhausted
 API_17TRACK_GETQUOTA = f"{API_17TRACK_BASE}/getquota"
 API_17TRACK_RATE_LIMIT = 3  # req/sec
@@ -174,6 +177,33 @@ CARRIER_17TRACK_CODE = {
     "ups": 100002,
     "cainiao": 190271,
     "colisprive": 100027,  # Colis Privé
+    "dpd": 100072,  # DPD (FR)
+    "gls": 101272,  # GLS (FR)
+    "mondialrelay": 100304,
+    "relaiscolis": 100461,
+    "tnt": 100241,  # TNT (FR)
+    "fedex": 100003,
+    "vintedgo": 101020,
+}
+
+# Choices of the change_carrier service: option -> (17track code, carrier name)
+# Codes from https://res.17track.net/asset/carrier/info/apicarrier.all.json
+CHANGE_CARRIER_OPTIONS: dict[str, tuple[int, str]] = {
+    "colissimo": (6051, "colissimo"),
+    "chronopost": (100273, "chronopost"),
+    "colisprive": (100027, "colisprive"),
+    "mondialrelay": (100304, "mondialrelay"),
+    "relaiscolis": (100461, "relaiscolis"),
+    "dpd": (100072, "dpd"),
+    "gls": (101272, "gls"),
+    "ups": (100002, "ups"),
+    "fedex": (100003, "fedex"),
+    "tnt": (100241, "tnt"),
+    "dhl_paket": (7041, "dhl"),  # DHL Paket / Deutsche Post parcels
+    "dhl_express": (100001, "dhl"),
+    "amazon": (101001, "amazon"),  # Amazon Shipping (FR)
+    "vintedgo": (101020, "vintedgo"),
+    "cainiao": (190271, "cainiao"),
 }
 
 # Status icon mapping

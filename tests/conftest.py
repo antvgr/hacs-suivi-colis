@@ -32,6 +32,6 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 
 @pytest.fixture(autouse=True)
 def skip_frontend_dependencies(hass):
-    """Pretend the manifest dependencies are loaded (no frontend build in tests)."""
-    hass.config.components.update({"frontend", "http"})
+    """Pretend the frontend is loaded: its build (hass_frontend) is not installed."""
+    hass.config.components.add("frontend")
     yield

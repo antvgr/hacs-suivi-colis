@@ -1,13 +1,17 @@
 {
   "domain": "suivi_colis",
   "name": "Suivi de Colis",
+  "after_dependencies": [
+    "cloud"
+  ],
   "codeowners": [
     "@hellolemon"
   ],
   "config_flow": true,
   "dependencies": [
     "frontend",
-    "http"
+    "http",
+    "webhook"
   ],
   "documentation": "https://github.com/hello-lemon/hacs-suivi-colis",
   "iot_class": "cloud_polling",

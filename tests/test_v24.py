@@ -151,3 +151,65 @@ async def test_quota_error_keeps_sensor_unavailable(hass):
     await coord._update_quota()
     assert coord.quota is None
     assert not SuiviColisQuotaSensor(coord, MagicMock(entry_id="e")).available
+
+
+async def test_followup_refreshes_after_registration(hass):
+    """A new number is polled again shortly, until 17track has data for it."""
+    from datetime import timedelta
+
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
+    from custom_components.suivi_colis.coordinator import FOLLOWUP_REFRESH_DELAYS
+
+    packages: dict = {}
+    store = MagicMock()
+    store.active_packages = packages
+    store.packages = packages
+    store.has_package = lambda n: n in packages
+    store.add_package = lambda p: packages.__setitem__(p.tracking_number, p)
+    store.get_package = packages.get
+    store.async_save = AsyncMock()
+    api = MagicMock()
+    api.register_package = AsyncMock(return_value=True)
+
+    coord = _coordinator(hass, store, api)
+    coord.async_request_refresh = AsyncMock()
+
+    assert await coord.add_package("CH514085194DE")
+    assert coord.async_request_refresh.await_count == 1  # immediate one
+    assert len(coord._followup_unsubs) == len(FOLLOWUP_REFRESH_DELAYS)
+
+    now = dt_util.utcnow()
+    async_fire_time_changed(hass, now + timedelta(seconds=FOLLOWUP_REFRESH_DELAYS[0] + 1))
+    await hass.async_block_till_done()
+    assert coord.async_request_refresh.await_count == 2  # still waiting for data
+
+    packages["CH514085194DE"].last_updated = datetime.now()
+    async_fire_time_changed(hass, now + timedelta(seconds=FOLLOWUP_REFRESH_DELAYS[-1] + 1))
+    await hass.async_block_till_done()
+    assert coord.async_request_refresh.await_count == 2  # data arrived: no more polls
+
+    await coord.async_shutdown()
+    assert coord._followup_unsubs == []
+
+
+async def test_rejected_numbers_are_ignored_not_errors():
+    c = Api17TrackClient(None, "k")
+    c._request = AsyncMock(return_value={"code": 0, "data": {"accepted": [], "rejected": [
+        {"number": "CH514085194DE", "error": {"code": -18019909, "message": "No tracking information at this time."}}]}})
+    assert await c.get_track_info(["CH514085194DE"]) == {}
+
+
+async def test_sensor_shows_package_name(hass):
+    """The name given when adding a package is the sensor name; the id keeps the number."""
+    named = Package("6A12345678901", friendly_name="Clavier MX Keys")
+    plain = Package("XA123456789FR")
+    store = MagicMock()
+    store.get_package = {p.tracking_number: p for p in (named, plain)}.get
+    coord = _coordinator(hass, store, MagicMock())
+
+    s1 = SuiviColisSensor(coord, named, MagicMock())
+    s2 = SuiviColisSensor(coord, plain, MagicMock())
+    assert s1.name == "Clavier MX Keys" and s1.entity_id == "sensor.6a12345678901"
+    assert s1.extra_state_attributes["package_name"] == "Clavier MX Keys"
+    assert s2.name == "XA123456789FR" and s2.extra_state_attributes["package_name"] == ""

@@ -77,16 +77,6 @@ Home Assistant doit être joignable depuis Internet : avec Nabu Casa, l'URL est 
 - **Archivage automatique** : nombre de jours après livraison avant suppression (défaut : 2, 0 = désactivé)
 - **Intervalle de vérification emails** : en minutes (défaut : 15)
 
-## Carte
-
-Ajoutez la carte **Suivi de Colis** depuis l'éditeur de tableau de bord, ou en YAML :
-
-```yaml
-type: custom:suivi-colis-card
-title: Colis          # optionnel
-show_delivered: true  # optionnel, afficher les colis livrés
-```
-
 ## Services
 
 | Service | Description |
@@ -109,18 +99,21 @@ data:
 
 ## Carte Lovelace
 
-La carte custom s'enregistre automatiquement au démarrage de Home Assistant.
+La carte s'enregistre automatiquement au démarrage de Home Assistant : sur un tableau de bord, **Ajouter une carte**, puis chercher **Suivi de Colis**. Elle suit le thème de Home Assistant (clair, sombre ou personnalisé).
 
-1. Aller sur un dashboard → **Ajouter une carte**
-2. Chercher **"Suivi de Colis"** dans le picker
-3. Aucune configuration nécessaire
+- **Badges de résumé** : colis livrés aujourd'hui, à retirer, en route, en problème.
+- **Colis regroupés par urgence** : action requise (échec de livraison, à retirer, problème, suivi arrêté), en route, livrés. Chaque ligne indique le statut détaillé, le transporteur, le lieu, et à droite la date de livraison prévue ou le statut.
+- **Clic sur un colis** : historique complet des événements, numéro de suivi, transporteur, dernière mise à jour et bouton **Supprimer**.
+- **Bouton +** : ajouter un colis avec son numéro, un **nom** (facultatif) et le transporteur (détection automatique par défaut).
+- **Archiver les livrés** en bas de la carte.
 
-La carte affiche pour chaque colis :
-- Logo du transporteur, nom, numéro de suivi
-- Statut coloré et dernière info/localisation
-- **Clic sur un colis** : déplie l'historique complet des événements
-- **Bouton "+"** : ajouter un colis avec sélecteur de transporteur (Auto, La Poste, Chronopost, UPS, DHL, AliExpress, Colis Privé)
-- **Bouton "x"** sur les colis livrés : suppression manuelle
+Options (éditeur visuel ou YAML) :
+
+```yaml
+type: custom:suivi-colis-card
+title: Colis          # optionnel
+show_delivered: true  # afficher les colis livrés
+```
 
 ## Transporteurs supportés
 

@@ -14,6 +14,9 @@ CONF_MAILBOXES = "mailboxes"
 CONF_WEBHOOK_ID = "webhook_id"  # entry.data, secret part of the webhook URL
 CONF_WEBHOOK_ENABLED = "webhook_enabled"  # entry.options
 
+# Fired on the bus each time a package changes status
+EVENT_STATUS_CHANGED = "suivi_colis_status_changed"
+
 # Legacy single-mailbox keys (config entry v1, migrated to CONF_MAILBOXES)
 CONF_IMAP_SERVER = "imap_server"
 CONF_IMAP_PORT = "imap_port"

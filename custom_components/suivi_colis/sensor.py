@@ -3,20 +3,29 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.util import slugify
+from homeassistant.util import dt as dt_util, slugify
 
 from .const import DOMAIN, STATUS_ICONS
 from .coordinator import SuiviColisCoordinator
-from .models import Package
+from .entity import SuiviColisEntity, device_info
+from .models import Package, PackageStatus
 
 _LOGGER = logging.getLogger(__name__)
+
+# Packages that are neither delivered nor archived
+IN_PROGRESS = {s for s in PackageStatus if s != PackageStatus.DELIVERED}
 
 
 async def async_setup_entry(
@@ -27,46 +36,64 @@ async def async_setup_entry(
     """Set up Suivi de Colis sensors from config entry."""
     coordinator: SuiviColisCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    # Track which sensors exist
+    # Account / summary sensors
+    async_add_entities(
+        [
+            SuiviColisCountSensor(coordinator, entry, "in_progress", IN_PROGRESS, "mdi:package-variant"),
+            SuiviColisCountSensor(
+                coordinator, entry, "out_for_delivery_today",
+                {PackageStatus.OUT_FOR_DELIVERY}, "mdi:truck-fast",
+            ),
+            SuiviColisCountSensor(
+                coordinator, entry, "to_pick_up",
+                {PackageStatus.AVAILABLE_FOR_PICKUP}, "mdi:store-marker",
+            ),
+            SuiviColisNextDeliverySensor(coordinator, entry),
+            SuiviColisQuotaSensor(coordinator, entry),
+            SuiviColisLastRefreshSensor(coordinator, entry),
+        ]
+    )
+
+    # One sensor per package
     tracked: set[str] = set()
 
     @callback
     def _async_add_new_sensors() -> None:
         """Add sensors for newly discovered packages."""
         new_entities: list[SuiviColisSensor] = []
-
         for tracking_number, package in coordinator.store.active_packages.items():
             if tracking_number not in tracked:
                 tracked.add(tracking_number)
-                new_entities.append(
-                    SuiviColisSensor(coordinator, package, entry)
-                )
-
-        # Remove archived from tracking set
-        active_numbers = set(coordinator.store.active_packages.keys())
-        archived = tracked - active_numbers
-        for number in archived:
-            tracked.discard(number)
-
+                new_entities.append(SuiviColisSensor(coordinator, package, entry))
+        # Forget archived packages
+        tracked.intersection_update(coordinator.store.active_packages.keys())
         if new_entities:
             async_add_entities(new_entities)
 
-    # Account-level sensor: 17track quota
-    async_add_entities([SuiviColisQuotaSensor(coordinator, entry)])
-
-    # Add existing packages
     _async_add_new_sensors()
+    entry.async_on_unload(coordinator.async_add_listener(_async_add_new_sensors))
 
-    # Listen for new packages on each update
-    entry.async_on_unload(
-        coordinator.async_add_listener(_async_add_new_sensors)
-    )
+
+def _iso(value) -> str | None:
+    return value.isoformat() if value else None
+
+
+def _active(coordinator: SuiviColisCoordinator) -> list[Package]:
+    return list(coordinator.store.active_packages.values())
+
+
+# ---------------------------------------------------------------- packages
 
 
 class SuiviColisSensor(CoordinatorEntity[SuiviColisCoordinator], SensorEntity):
-    """Sensor for a single tracked package."""
+    """Sensor for a single tracked package (state = status, translated in the UI)."""
 
     _attr_has_entity_name = False
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = [s.value for s in PackageStatus]
+    _attr_translation_key = "package"
+    # The history can be long: keep it out of the recorder database
+    _unrecorded_attributes = frozenset({"events"})
 
     def __init__(
         self,
@@ -81,6 +108,7 @@ class SuiviColisSensor(CoordinatorEntity[SuiviColisCoordinator], SensorEntity):
         # Entity id stays based on the tracking number (as in 1.0.x), the
         # displayed name is the package name given by the user, if any
         self.entity_id = f"sensor.{slugify(package.tracking_number)}"
+        self._attr_device_info = device_info(entry)
 
     @property
     def name(self) -> str:
@@ -102,7 +130,9 @@ class SuiviColisSensor(CoordinatorEntity[SuiviColisCoordinator], SensorEntity):
     def native_value(self) -> str | None:
         """Return the package status."""
         pkg = self._package
-        return pkg.status if pkg else None
+        if pkg is None:
+            return None
+        return pkg.status if pkg.status in self._attr_options else PackageStatus.UNKNOWN
 
     @property
     def icon(self) -> str:
@@ -155,35 +185,109 @@ class SuiviColisSensor(CoordinatorEntity[SuiviColisCoordinator], SensorEntity):
 
         return attrs
 
-    async def async_will_remove_from_hass(self) -> None:
-        """Clean up when removed."""
-        _LOGGER.debug("Removing sensor for %s", self._tracking_number)
+
+# ---------------------------------------------------------------- summary
 
 
-def _iso(value) -> str | None:
-    return value.isoformat() if value else None
+class SuiviColisCountSensor(SuiviColisEntity, SensorEntity):
+    """Number of packages in some statuses (in progress, today, to pick up)."""
 
-
-class SuiviColisQuotaSensor(CoordinatorEntity[SuiviColisCoordinator], SensorEntity):
-    """Remaining 17track tracking quota (1 credit per new tracking number)."""
-
-    _attr_has_entity_name = True
-    _attr_translation_key = "quota_remain"
-    _attr_icon = "mdi:counter"
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_native_unit_of_measurement = "suivis"
+    _attr_native_unit_of_measurement = "colis"
+
+    def __init__(
+        self,
+        coordinator: SuiviColisCoordinator,
+        entry: ConfigEntry,
+        key: str,
+        statuses: set[str],
+        icon: str,
+    ) -> None:
+        """Initialize."""
+        super().__init__(coordinator, entry, key)
+        self._statuses = statuses
+        self._attr_icon = icon
+
+    def _packages(self) -> list[Package]:
+        return [p for p in _active(self.coordinator) if p.status in self._statuses]
+
+    @property
+    def native_value(self) -> int:
+        """Number of matching packages."""
+        return len(self._packages())
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """The matching packages, for templates and notifications."""
+        return {
+            "packages": [
+                {
+                    "name": p.display_name,
+                    "tracking_number": p.tracking_number,
+                    "carrier": p.carrier,
+                    "status": p.status,
+                }
+                for p in self._packages()
+            ]
+        }
+
+
+class SuiviColisNextDeliverySensor(SuiviColisEntity, SensorEntity):
+    """Earliest estimated delivery among the packages in progress."""
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:calendar-clock"
 
     def __init__(self, coordinator: SuiviColisCoordinator, entry: ConfigEntry) -> None:
         """Initialize."""
-        super().__init__(coordinator)
+        super().__init__(coordinator, entry, "next_delivery")
+
+    def _next(self) -> tuple[datetime, Package] | None:
+        candidates = [
+            (p.estimated_delivery_from or p.estimated_delivery_to, p)
+            for p in _active(self.coordinator)
+            if p.status != PackageStatus.DELIVERED
+            and (p.estimated_delivery_from or p.estimated_delivery_to)
+        ]
+        return min(candidates, key=lambda c: c[0]) if candidates else None
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Date of the next expected delivery."""
+        nxt = self._next()
+        return dt_util.as_utc(nxt[0]) if nxt else None
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Which package is expected next."""
+        nxt = self._next()
+        if not nxt:
+            return {}
+        _, pkg = nxt
+        return {
+            "name": pkg.display_name,
+            "tracking_number": pkg.tracking_number,
+            "carrier": pkg.carrier,
+            "estimated_delivery_to": _iso(pkg.estimated_delivery_to),
+        }
+
+
+# ---------------------------------------------------------------- diagnostics
+
+
+class SuiviColisQuotaSensor(SuiviColisEntity, SensorEntity):
+    """Remaining 17track tracking quota (1 credit per new tracking number)."""
+
+    _attr_icon = "mdi:counter"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "suivis"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: SuiviColisCoordinator, entry: ConfigEntry) -> None:
+        """Initialize."""
+        super().__init__(coordinator, entry, "quota_remain")
+        # Keep the unique id of 1.1.0 so the existing entity is reused
         self._attr_unique_id = f"{DOMAIN}_quota_remain"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name="17track",
-            manufacturer="17TRACK",
-            entry_type=DeviceEntryType.SERVICE,
-            configuration_url="https://api.17track.net/admin/dashboard",
-        )
 
     @property
     def available(self) -> bool:
@@ -203,4 +307,29 @@ class SuiviColisQuotaSensor(CoordinatorEntity[SuiviColisCoordinator], SensorEnti
             key: quota.get(key)
             for key in ("quota_total", "quota_used", "today_used", "max_track_daily")
             if key in quota
+        }
+
+
+class SuiviColisLastRefreshSensor(SuiviColisEntity, SensorEntity):
+    """Last successful update from 17track (polling or webhook)."""
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:update"
+
+    def __init__(self, coordinator: SuiviColisCoordinator, entry: ConfigEntry) -> None:
+        """Initialize."""
+        super().__init__(coordinator, entry, "last_refresh")
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Time of the last successful refresh."""
+        return self.coordinator.last_refresh
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Last webhook notification and email check."""
+        return {
+            "last_push": _iso(self.coordinator.last_push),
+            "last_email_check": _iso(self.coordinator.last_email_check),
         }

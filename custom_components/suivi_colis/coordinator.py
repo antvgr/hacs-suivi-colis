@@ -5,7 +5,10 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
-from homeassistant.core import HomeAssistant
+from collections.abc import Callable
+
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -21,6 +24,7 @@ from .const import (
     DEFAULT_EMAIL_INTERVAL,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
+    EVENT_STATUS_CHANGED,
     MB_ENABLED,
     MB_ID,
     MB_NAME,
@@ -46,11 +50,13 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
         store: SuiviColisStore,
         config: dict,
         options: dict,
+        config_entry: ConfigEntry | None = None,
     ) -> None:
         """Initialize."""
         super().__init__(
             hass,
             _LOGGER,
+            config_entry=config_entry,
             name=DOMAIN,
             update_interval=timedelta(minutes=DEFAULT_UPDATE_INTERVAL),
         )
@@ -63,6 +69,10 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
         self.mailbox_status: dict[str, dict] = {}
         # Last /getquota answer (quota_total, quota_used, quota_remain, ...)
         self.quota: dict | None = None
+        # Last successful 17track refresh (polling) and webhook notification
+        self.last_refresh: datetime | None = None
+        self.last_push: datetime | None = None
+        self._status_listeners: list[Callable[[dict], None]] = []
         self._followup_unsubs: list = []
 
     @property
@@ -106,6 +116,8 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
 
         # 3. Auto-remove delivered
         await self._auto_remove_delivered()
+
+        self.last_refresh = dt_util.utcnow()
 
         # 4. Save to storage
         await self.store.async_save()
@@ -159,6 +171,9 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
         if data.get("carrier"):
             pkg.carrier = data["carrier"]
 
+        if pkg.status != old_status:
+            self._notify_status_change(pkg, old_status)
+
         if pkg.status == PackageStatus.DELIVERED and (
             old_status != PackageStatus.DELIVERED or pkg.delivered_at is None
         ):
@@ -172,6 +187,35 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
             )
             if old_status != PackageStatus.DELIVERED:
                 _LOGGER.info("Package %s delivered!", pkg.display_name)
+
+    @property
+    def last_email_check(self) -> datetime | None:
+        """Last time the mailboxes were checked (local time)."""
+        return self._last_email_check
+
+    @callback
+    def async_add_status_listener(
+        self, listener: Callable[[dict], None]
+    ) -> CALLBACK_TYPE:
+        """Call ``listener`` with the event data on every status change."""
+        self._status_listeners.append(listener)
+        return lambda: self._status_listeners.remove(listener)
+
+    def _notify_status_change(self, pkg: Package, old_status: str) -> None:
+        """Fire suivi_colis_status_changed (bus event + event entity)."""
+        data = {
+            "tracking_number": pkg.tracking_number,
+            "name": pkg.display_name,
+            "carrier": pkg.carrier,
+            "old_status": old_status,
+            "new_status": pkg.status,
+            "sub_status": pkg.sub_status,
+            "info": pkg.info_text,
+            "location": pkg.location,
+        }
+        self.hass.bus.async_fire(EVENT_STATUS_CHANGED, data)
+        for listener in list(self._status_listeners):
+            listener(data)
 
     async def async_handle_push(self, event: str, items: list[dict]) -> int:
         """Apply a 17track webhook notification. Returns the packages updated."""
@@ -190,6 +234,7 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
                 self._apply_track_data(pkg, self.api_client.parse_tracked_item(item), now)
             updated += 1
         if updated:
+            self.last_push = dt_util.utcnow()
             await self.store.async_save()
             self.async_set_updated_data(self.store.active_packages)
         return updated

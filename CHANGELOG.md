@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.0 — 2026-11-13
+
+### What's Changed
+* Webhook 17track temps réel, changement de transporteur et relance rapide des nouveaux colis by @antvgr in https://github.com/antvgr/hacs-suivi-colis/pull/2
+
+
+**Full Changelog**: https://github.com/antvgr/hacs-suivi-colis/compare/v1.1.0...v1.2.0
+
 ## v1.1.0 — 2026-11-12
 
 ### What's Changed

@@ -52,7 +52,14 @@ const CARRIER_OPTIONS = [
   { value: "ups", label: "UPS" },
   { value: "dhl", label: "DHL" },
   { value: "cainiao", label: "AliExpress / Cainiao" },
-  { value: "colisprive", label: "Colis Prive" },
+  { value: "colisprive", label: "Colis Privé" },
+  { value: "mondialrelay", label: "Mondial Relay" },
+  { value: "relaiscolis", label: "Relais Colis" },
+  { value: "dpd", label: "DPD" },
+  { value: "gls", label: "GLS" },
+  { value: "fedex", label: "FedEx" },
+  { value: "tnt", label: "TNT" },
+  { value: "vintedgo", label: "Vinted Go" },
 ];
 
 // Carrier -> favicon domain
@@ -65,6 +72,13 @@ const CARRIER_DOMAINS = {
   amazon: "www.amazon.fr",
   cainiao: "global.cainiao.com",
   colisprive: "www.colisprive.fr",
+  mondialrelay: "www.mondialrelay.fr",
+  relaiscolis: "www.relaiscolis.com",
+  dpd: "www.dpd.fr",
+  gls: "gls-group.com",
+  fedex: "www.fedex.com",
+  tnt: "www.tnt.com",
+  vintedgo: "www.vinted.fr",
 };
 
 class SuiviColisCard extends HTMLElement {
@@ -124,6 +138,7 @@ class SuiviColisCard extends HTMLElement {
           events: state.attributes.events || [],
           sub_status: state.attributes.sub_status || "",
           last_updated: state.attributes.last_updated || "",
+          tracking_stopped: !!state.attributes.tracking_stopped,
           delivered_at: state.attributes.delivered_at || "",
           eta_from: state.attributes.estimated_delivery_from || "",
           eta_to: state.attributes.estimated_delivery_to || "",
@@ -553,7 +568,7 @@ class SuiviColisCard extends HTMLElement {
     const infoLine = [this._truncate(pkg.info_text), pkg.location].filter(Boolean).join(" \u2014 ");
     let subStatus = SUB_STATUS_LABELS[pkg.sub_status] || "";
     if (subStatus && (pkg.info_text || "").toLowerCase().includes(subStatus.toLowerCase())) subStatus = "";
-    const dateLine = this._dateLine(pkg);
+    const dateLine = pkg.tracking_stopped ? "Suivi arrêté par 17track" : this._dateLine(pkg);
     const isExpanded = this._expandedPackage === pkg.tracking_number;
     const hasEvents = pkg.events && pkg.events.length > 0;
 

@@ -63,6 +63,15 @@ Pour chaque boîte :
 
 Une configuration créée avec une version précédente (une seule boîte) est migrée automatiquement.
 
+### Notifications en temps réel (webhook, optionnel)
+
+Par défaut, l'intégration interroge 17track toutes les 30 minutes. Avec le webhook, 17track prévient Home Assistant dès qu'un colis change :
+
+1. **Paramètres → Appareils et services → Suivi de Colis → Configurer → Notifications en temps réel** : activer l'option et copier l'URL affichée ;
+2. la coller dans le [tableau de bord 17track](https://api.17track.net/admin/settings), section **WebHook**, puis enregistrer et tester.
+
+Home Assistant doit être joignable depuis Internet : avec Nabu Casa, l'URL est créée automatiquement ; sinon, il faut une URL externe (Paramètres → Système → Réseau). Chaque appel est vérifié avec la signature 17track (`sign`), une URL connue ne suffit donc pas pour envoyer de fausses données. Le suivi par interrogation reste actif en secours.
+
 ### Options
 
 - **Archivage automatique** : nombre de jours après livraison avant suppression (défaut : 2, 0 = désactivé)
@@ -76,6 +85,7 @@ Une configuration créée avec une version précédente (une seule boîte) est m
 | `suivi_colis.remove_package` | Arrêter le suivi d'un colis |
 | `suivi_colis.refresh` | Forcer une mise à jour immédiate |
 | `suivi_colis.archive_delivered` | Archiver tous les colis livrés |
+| `suivi_colis.change_carrier` | Suivre un colis chez un autre transporteur (transporteur mal détecté, 5 changements max par colis) |
 
 ### Exemple : ajouter un colis
 

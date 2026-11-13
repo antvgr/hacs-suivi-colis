@@ -91,7 +91,8 @@
           "general": "⚙️ Paramètres généraux",
           "mailbox_provider": "➕ Ajouter une boîte mail",
           "mailbox_edit": "✏️ Modifier une boîte mail",
-          "mailbox_remove": "🗑️ Supprimer des boîtes mail"
+          "mailbox_remove": "🗑️ Supprimer des boîtes mail",
+          "webhook": "📡 Notifications en temps réel (webhook)"
         }
       },
       "general": {
@@ -161,6 +162,13 @@
           "max_emails": "Emails les plus récents d'abord. 0 = sans limite.",
           "enabled": "Décocher pour suspendre l'analyse sans supprimer la boîte."
         }
+      },
+      "webhook": {
+        "title": "Notifications en temps réel (webhook)",
+        "description": "17track peut prévenir Home Assistant dès qu'un colis change, au lieu d'attendre le prochain cycle de 30 minutes.\n\n1. Activez l'option ci-dessous.\n2. Copiez cette URL : `{webhook_url}`\n3. Collez-la dans le tableau de bord 17track ({dashboard_url}), section WebHook, puis enregistrez et testez.\n\nHome Assistant doit être joignable depuis Internet (Nabu Casa ou URL externe configurée). Les appels sont vérifiés avec la signature 17track.",
+        "data": {
+          "webhook_enabled": "Recevoir les notifications 17track"
+        }
       }
     },
     "error": {
@@ -174,7 +182,8 @@
       "imap_connection_failed": "Connexion IMAP échouée ({error_detail})",
       "mailbox_exists": "Cette boîte mail est déjà configurée",
       "password_required": "Mot de passe requis",
-      "no_folder": "Choisissez au moins un dossier"
+      "no_folder": "Choisissez au moins un dossier",
+      "no_external_url": "Pas d'URL externe : configurez Nabu Casa ou une URL externe dans Paramètres > Système > Réseau"
     }
   },
   "selector": {
@@ -208,6 +217,17 @@
       "quota_remain": {
         "name": "Quota 17track restant"
       }
+    }
+  },
+  "exceptions": {
+    "carrier_required": {
+      "message": "Indiquez un transporteur ou un code transporteur 17track."
+    },
+    "package_not_found": {
+      "message": "Le colis {tracking_number} n'est pas suivi."
+    },
+    "change_carrier_failed": {
+      "message": "17track a refusé le changement de transporteur : {error}"
     }
   }
 }

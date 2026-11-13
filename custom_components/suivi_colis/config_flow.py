@@ -11,6 +11,7 @@ from typing import Any
 import aiohttp
 import voluptuous as vol
 from homeassistant import config_entries
+from homeassistant.components.webhook import async_generate_id as webhook_generate_id
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
@@ -20,6 +21,8 @@ from .const import (
     CONF_ARCHIVE_AFTER_DAYS,
     CONF_EMAIL_INTERVAL,
     CONF_MAILBOXES,
+    CONF_WEBHOOK_ENABLED,
+    CONF_WEBHOOK_ID,
     DEFAULT_ARCHIVE_AFTER_DAYS,
     DEFAULT_EMAIL_INTERVAL,
     DEFAULT_IMAP_FOLDER,
@@ -336,6 +339,7 @@ class SuiviColisConfigFlow(MailboxFlowMixin, config_entries.ConfigFlow, domain=D
     """Handle a config flow for Suivi de Colis."""
 
     VERSION = 2
+    MINOR_VERSION = 2  # 2.2: webhook id (see async_migrate_entry)
 
     def __init__(self) -> None:
         """Initialize."""
@@ -401,7 +405,7 @@ class SuiviColisConfigFlow(MailboxFlowMixin, config_entries.ConfigFlow, domain=D
         """Create the entry."""
         return self.async_create_entry(
             title="Suivi de Colis",
-            data=self._data,
+            data={**self._data, CONF_WEBHOOK_ID: webhook_generate_id()},
             options={
                 CONF_ARCHIVE_AFTER_DAYS: DEFAULT_ARCHIVE_AFTER_DAYS,
                 CONF_EMAIL_INTERVAL: DEFAULT_EMAIL_INTERVAL,
@@ -447,6 +451,7 @@ class SuiviColisOptionsFlow(MailboxFlowMixin, config_entries.OptionsFlow):
         menu = ["general", STEP_ADD_MAILBOX]
         if self._mailboxes:
             menu += ["mailbox_edit", "mailbox_remove"]
+        menu.append("webhook")
         return self.async_show_menu(
             step_id="init",
             menu_options=menu,
@@ -482,6 +487,34 @@ class SuiviColisOptionsFlow(MailboxFlowMixin, config_entries.OptionsFlow):
                     ): _number(5, 120, "min"),
                 }
             ),
+        )
+
+    async def async_step_webhook(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """17track push notifications: show the URL to paste in 17track."""
+        if user_input is not None:
+            return self._save(**{CONF_WEBHOOK_ENABLED: user_input[CONF_WEBHOOK_ENABLED]})
+
+        from .webhook import async_get_webhook_url
+
+        webhook_id = self.config_entry.data.get(CONF_WEBHOOK_ID)
+        url = await async_get_webhook_url(self.hass, webhook_id) if webhook_id else None
+        return self.async_show_form(
+            step_id="webhook",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_WEBHOOK_ENABLED,
+                        default=self.config_entry.options.get(CONF_WEBHOOK_ENABLED, False),
+                    ): selector.BooleanSelector(),
+                }
+            ),
+            description_placeholders={
+                "webhook_url": url or "—",
+                "dashboard_url": "https://api.17track.net/admin/settings",
+            },
+            errors={} if url else {"base": "no_external_url"},
         )
 
     def _mailbox_choices(self) -> list[selector.SelectOptionDict]:

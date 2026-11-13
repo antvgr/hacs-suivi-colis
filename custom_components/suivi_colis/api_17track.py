@@ -10,6 +10,7 @@ from typing import Any
 import aiohttp
 
 from .const import (
+    API_17TRACK_CHANGECARRIER,
     API_17TRACK_GETQUOTA,
     API_17TRACK_GETTRACKINFO,
     API_17TRACK_LANGS,
@@ -32,6 +33,14 @@ CARRIER_17TRACK_REVERSE = {
     100398: "ups",  # UPS Mail Innovations
     190271: "cainiao",
     100027: "colisprive",
+    100072: "dpd",
+    101272: "gls",
+    100304: "mondialrelay",
+    100461: "relaiscolis",
+    100241: "tnt",
+    100003: "fedex",
+    100854: "fedex",
+    101020: "vintedgo",
     100001: "dhl",  # DHL Express
     7041: "dhl",  # DHL Paket
     101266: "dhl",
@@ -232,8 +241,7 @@ class Api17TrackClient:
 
             for item in accepted:
                 number = item.get("number", "")
-                track_info = item.get("track_info") or {}
-                output[number] = self._parse_track_data(track_info)
+                output[number] = self.parse_tracked_item(item)
 
             # Typically -18019909 "no tracking information at this time": a newly
             # registered number 17track has not fetched from the carrier yet
@@ -247,6 +255,31 @@ class Api17TrackClient:
                 )
 
         return output
+
+    def parse_tracked_item(self, item: dict) -> dict:
+        """Parse one gettrackinfo/webhook item ({number, carrier, track_info})."""
+        data = self._parse_track_data(item.get("track_info") or {})
+        code = item.get("carrier")
+        data["carrier_code"] = code if isinstance(code, int) and code > 0 else None
+        return data
+
+    async def change_carrier(
+        self, tracking_number: str, new_code: int, old_code: int | None = None
+    ) -> None:
+        """Change the carrier a number is tracked with. Raises Api17TrackError."""
+        item: dict[str, Any] = {"number": tracking_number, "carrier_new": new_code}
+        if old_code:
+            item["carrier_old"] = old_code
+        result = await self._request(API_17TRACK_CHANGECARRIER, [item])
+        data = result.get("data") or {}
+        if result.get("code") == 0 and data.get("accepted"):
+            return
+        rejected = data.get("rejected") or [{}]
+        error = rejected[0].get("error") or {}
+        raise Api17TrackError(
+            f"{error.get('code', result.get('code'))}: "
+            f"{error.get('message') or data.get('errors') or result}"
+        )
 
     def _parse_track_data(self, track_info: dict) -> dict:
         """Parse 17track track_info into our format."""

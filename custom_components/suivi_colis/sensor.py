@@ -112,6 +112,8 @@ class SuiviColisSensor(CoordinatorEntity[SuiviColisCoordinator], SensorEntity):
         attrs = {
             "tracking_number": pkg.tracking_number,
             "carrier": pkg.carrier,
+            "carrier_code": pkg.carrier_code,
+            "tracking_stopped": pkg.tracking_stopped,
             "friendly_name": pkg.friendly_name,
             "info_text": pkg.info_text,
             "location": pkg.location,

@@ -136,37 +136,89 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
         now = datetime.now()
         for number, data in results.items():
             pkg = self.store.get_package(number)
-            if not pkg:
+            if pkg:
+                self._apply_track_data(pkg, data, now)
+
+    def _apply_track_data(self, pkg: Package, data: dict, now: datetime) -> None:
+        """Apply parsed 17track data (polling or webhook) to a package."""
+        old_status = pkg.status
+        pkg.tracking_stopped = False
+        if data.get("carrier_code"):
+            pkg.carrier_code = data["carrier_code"]
+        pkg.status = data["status"]
+        pkg.sub_status = data.get("sub_status", "")
+        pkg.sub_status_descr = data.get("sub_status_descr", "")
+        pkg.estimated_delivery_from = data.get("estimated_delivery_from")
+        pkg.estimated_delivery_to = data.get("estimated_delivery_to")
+        pkg.estimated_delivery_source = data.get("estimated_delivery_source", "")
+        pkg.info_text = data["info_text"]
+        pkg.location = data["location"]
+        pkg.events = data["events"]
+        pkg.last_updated = now
+        # Update carrier from 17track (always trust API over local detection)
+        if data.get("carrier"):
+            pkg.carrier = data["carrier"]
+
+        if pkg.status == PackageStatus.DELIVERED and (
+            old_status != PackageStatus.DELIVERED or pkg.delivered_at is None
+        ):
+            # Real delivery time from the carrier, in local naive time like
+            # the other timestamps of the package; detection time otherwise
+            delivered = data.get("delivered_time")
+            pkg.delivered_at = (
+                dt_util.as_local(delivered).replace(tzinfo=None)
+                if delivered
+                else now
+            )
+            if old_status != PackageStatus.DELIVERED:
+                _LOGGER.info("Package %s delivered!", pkg.display_name)
+
+    async def async_handle_push(self, event: str, items: list[dict]) -> int:
+        """Apply a 17track webhook notification. Returns the packages updated."""
+        now = datetime.now()
+        updated = 0
+        for item in items:
+            number = str(item.get("number") or "").strip().upper()
+            pkg = self.store.get_package(number)
+            if pkg is None:
+                _LOGGER.debug("17track push for untracked number %s ignored", number)
                 continue
+            if event == "TRACKING_STOPPED":
+                pkg.tracking_stopped = True
+                _LOGGER.info("17track stopped tracking %s", pkg.display_name)
+            else:
+                self._apply_track_data(pkg, self.api_client.parse_tracked_item(item), now)
+            updated += 1
+        if updated:
+            await self.store.async_save()
+            self.async_set_updated_data(self.store.active_packages)
+        return updated
 
-            old_status = pkg.status
-            pkg.status = data["status"]
-            pkg.sub_status = data.get("sub_status", "")
-            pkg.sub_status_descr = data.get("sub_status_descr", "")
-            pkg.estimated_delivery_from = data.get("estimated_delivery_from")
-            pkg.estimated_delivery_to = data.get("estimated_delivery_to")
-            pkg.estimated_delivery_source = data.get("estimated_delivery_source", "")
-            pkg.info_text = data["info_text"]
-            pkg.location = data["location"]
-            pkg.events = data["events"]
-            pkg.last_updated = now
-            # Update carrier from 17track (always trust API over local detection)
-            if data.get("carrier"):
-                pkg.carrier = data["carrier"]
-
-            if pkg.status == PackageStatus.DELIVERED and (
-                old_status != PackageStatus.DELIVERED or pkg.delivered_at is None
-            ):
-                # Real delivery time from the carrier, in local naive time like
-                # the other timestamps of the package; detection time otherwise
-                delivered = data.get("delivered_time")
-                pkg.delivered_at = (
-                    dt_util.as_local(delivered).replace(tzinfo=None)
-                    if delivered
-                    else now
-                )
-                if old_status != PackageStatus.DELIVERED:
-                    _LOGGER.info("Package %s delivered!", pkg.display_name)
+    async def change_carrier(
+        self, tracking_number: str, new_code: int, carrier_name: str
+    ) -> None:
+        """Track a package with another carrier. Raises Api17TrackError."""
+        tracking_number = tracking_number.strip().upper()
+        pkg = self.store.get_package(tracking_number)
+        if pkg is None:
+            raise Api17TrackError(f"Package {tracking_number} is not tracked")
+        await self.api_client.change_carrier(tracking_number, new_code, pkg.carrier_code)
+        # 17track fetches the new carrier from scratch: wait for fresh data
+        pkg.carrier = carrier_name
+        pkg.carrier_code = new_code
+        pkg.status = PackageStatus.UNKNOWN
+        pkg.sub_status = ""
+        pkg.sub_status_descr = ""
+        pkg.info_text = ""
+        pkg.location = ""
+        pkg.events = []
+        pkg.last_updated = None
+        pkg.estimated_delivery_from = None
+        pkg.estimated_delivery_to = None
+        pkg.estimated_delivery_source = ""
+        await self.store.async_save()
+        self.async_set_updated_data(self.store.active_packages)
+        self._schedule_followup_refreshes()
 
     async def _update_quota(self) -> None:
         """Refresh the 17track quota (free call)."""

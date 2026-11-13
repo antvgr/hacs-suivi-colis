@@ -84,6 +84,8 @@ class Package:
     carrier: str = Carrier.UNKNOWN
     friendly_name: str = ""
     status: str = PackageStatus.UNKNOWN
+    carrier_code: int | None = None  # 17track carrier code the number is tracked with
+    tracking_stopped: bool = False  # 17track stopped tracking (TRACKING_STOPPED)
     sub_status: str = ""  # 17track sub-status, e.g. "DeliveryFailure_NoBody"
     sub_status_descr: str = ""
     info_text: str = ""
@@ -115,6 +117,8 @@ class Package:
             "carrier": self.carrier,
             "friendly_name": self.friendly_name,
             "status": self.status,
+            "carrier_code": self.carrier_code,
+            "tracking_stopped": self.tracking_stopped,
             "sub_status": self.sub_status,
             "sub_status_descr": self.sub_status_descr,
             "info_text": self.info_text,
@@ -138,6 +142,9 @@ class Package:
             carrier=data.get("carrier", Carrier.UNKNOWN),
             friendly_name=data.get("friendly_name", ""),
             status=data.get("status", PackageStatus.UNKNOWN),
+            # Fields added in 1.1.0: defaults keep older stored packages loadable
+            carrier_code=data.get("carrier_code"),
+            tracking_stopped=data.get("tracking_stopped", False),
             sub_status=data.get("sub_status", ""),
             sub_status_descr=data.get("sub_status_descr", ""),
             info_text=data.get("info_text", ""),

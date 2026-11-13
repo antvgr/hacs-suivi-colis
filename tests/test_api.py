@@ -36,7 +36,9 @@ async def test_ambiguous_carriers_use_auto_detection(carrier):
 
 
 def test_no_fedex_code_for_dhl():
-    assert 100003 not in CARRIER_17TRACK_CODE.values()
+    # 100003 is FedEx: DHL must never be registered with it (auto-detection instead)
+    assert CARRIER_17TRACK_CODE.get("dhl") is None
+    assert CARRIER_17TRACK_CODE["fedex"] == 100003
 
 
 @pytest.mark.parametrize("code", [-18019907, -18019908])

@@ -209,7 +209,7 @@ def clean_pr_body(body: str) -> str:
             if SKIPPED_SECTIONS.match(title):
                 skip_level = level
                 continue
-            out.append("#" * min(level + 2, 6) + " " + heading.group(2).strip())
+            out.append("#" * min(level + 1, 6) + " " + heading.group(2).strip())
             continue
         if skip_level:
             continue

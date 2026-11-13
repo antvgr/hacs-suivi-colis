@@ -262,6 +262,13 @@ Chaque merge sur `main` publie automatiquement une version : tag `vX.Y.Z`, relea
   - `type!: …` ou `BREAKING CHANGE` → version majeure (**2**.0.0) ;
   - le reste (`fix: …`, `docs: …`…) → correctif (1.1.**1**).
 
+Les notes de version (release GitHub et `CHANGELOG.md`) reprennent le titre et la description de chaque pull request fusionnée, puis les commits poussés directement sur `main`, classés par type (nouveautés, corrections, documentation, maintenance). Les changements incompatibles (`BREAKING CHANGE:` en pied de commit) et une nouvelle version minimale de Home Assistant sont signalés en tête. La description d'une PR sert donc de note de version : sections « Tests » ou « Vérifications » exclues.
+
+```bash
+python .github/scripts/release.py --notes-for v1.2.0     # afficher les notes d'une version
+python .github/scripts/release.py --rebuild-changelog    # régénérer CHANGELOG.md
+```
+
 ## Licence
 
 MIT, voir [LICENSE](LICENSE).

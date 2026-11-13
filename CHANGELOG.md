@@ -1,5 +1,54 @@
 # Changelog
 
+## v1.3.0 — 2026-11-13
+
+### ⚠️ À lire avant de mettre à jour
+
+- Home Assistant **2025.1.0** ou plus récent est maintenant nécessaire.
+
+### Colis, synthèse et diagnostic sur la page de l'intégration + README réécrit ([#3](https://github.com/antvgr/hacs-suivi-colis/pull/3))
+
+#### Page de l'intégration
+
+Toutes les entités sont rattachées à un appareil **Suivi de Colis**, donc chaque colis en cours apparaît maintenant sur la page de l'intégration.
+
+- **Colis** : un capteur par colis. Son état est une énumération traduite dans l'interface (« En transit »…) et l'identifiant d'entité ne change pas. L'historique (`events`) n'est plus enregistré dans la base.
+- **Synthèse** : colis en cours, livraisons aujourd'hui, colis à retirer (nombres, avec la liste en attribut), prochaine livraison (horodatage), problème de livraison (capteur binaire).
+- **Événement** : `suivi_colis_status_changed` sur le bus, plus une entité événement « Changement de statut », avec l'ancien et le nouveau statut, le nom et le transporteur.
+- **Diagnostic** :
+  - quota 17track restant, déplacé dans cette section avec le même identifiant unique ;
+  - dernière actualisation (avec le dernier webhook et la dernière vérification des emails) ;
+  - un capteur de connectivité par boîte mail.
+- Ajouter, supprimer ou renommer une boîte mail recharge l'intégration et retire les entités devenues inutiles.
+
+#### Divers
+
+- Le coordinateur reçoit maintenant l'entrée de configuration, ce que Home Assistant rendra obligatoire. La version minimale de Home Assistant passe à **2025.1** dans `hacs.json`.
+- README entièrement réécrit : installation, configuration, menu des options, entités, carte, services, exemples d'automatisations, dépannage, désinstallation et migration.
+
+<details>
+<summary>Détail des 4 commits</summary>
+
+##### Nouveautés
+
+- Integration device with package, summary and diagnostic entities ([6165252](https://github.com/antvgr/hacs-suivi-colis/commit/61652529489e865ddfdc83a85d8a93e9d1fb95b6))
+
+##### Documentation
+
+- Rebuild CHANGELOG with the new release notes ([10aa852](https://github.com/antvgr/hacs-suivi-colis/commit/10aa852ab7921241b2a7128d1bb2f2eea252f69d))
+
+##### Maintenance
+
+- Richer release notes from pull request descriptions ([35934e5](https://github.com/antvgr/hacs-suivi-colis/commit/35934e560244b9896aa6099b97f02ca8136a411f))
+- List every commit of a pull request in the release notes ([fff3684](https://github.com/antvgr/hacs-suivi-colis/commit/fff36845d06960e2f76c9ea834640bacddc27c7c))
+
+</details>
+
+---
+
+**Mise à jour** : HACS → Suivi de Colis → Mettre à jour, puis redémarrer Home Assistant et recharger la page du navigateur pour obtenir la nouvelle carte.
+**Toutes les modifications** : https://github.com/antvgr/hacs-suivi-colis/compare/v1.2.0...v1.3.0
+
 ## v1.2.0 — 2026-11-13
 
 ### Webhook 17track temps réel, changement de transporteur et relance rapide des nouveaux colis ([#2](https://github.com/antvgr/hacs-suivi-colis/pull/2))

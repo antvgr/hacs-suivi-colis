@@ -214,8 +214,66 @@
   },
   "entity": {
     "sensor": {
+      "package": {
+        "state": {
+          "unknown": "Inconnu",
+          "info_received": "Expédition annoncée",
+          "in_transit": "En transit",
+          "out_for_delivery": "En livraison",
+          "available_for_pickup": "À retirer",
+          "delivered": "Livré",
+          "delivery_failure": "Échec de livraison",
+          "exception": "Problème",
+          "expired": "Suivi expiré",
+          "not_found": "Introuvable"
+        }
+      },
+      "in_progress": {
+        "name": "Colis en cours"
+      },
+      "out_for_delivery_today": {
+        "name": "Livraisons aujourd'hui"
+      },
+      "to_pick_up": {
+        "name": "Colis à retirer"
+      },
+      "next_delivery": {
+        "name": "Prochaine livraison"
+      },
       "quota_remain": {
         "name": "Quota 17track restant"
+      },
+      "last_refresh": {
+        "name": "Dernière actualisation"
+      }
+    },
+    "binary_sensor": {
+      "delivery_problem": {
+        "name": "Problème de livraison"
+      },
+      "mailbox": {
+        "name": "Boîte mail {name}"
+      }
+    },
+    "event": {
+      "status_changed": {
+        "name": "Changement de statut",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "unknown": "Inconnu",
+              "info_received": "Expédition annoncée",
+              "in_transit": "En transit",
+              "out_for_delivery": "En livraison",
+              "available_for_pickup": "À retirer",
+              "delivered": "Livré",
+              "delivery_failure": "Échec de livraison",
+              "exception": "Problème",
+              "expired": "Suivi expiré",
+              "not_found": "Introuvable"
+            }
+          }
+        }
       }
     }
   },

@@ -65,7 +65,7 @@ _LOGGER = logging.getLogger(__name__)
 CARD_JS_URL = "/suivi_colis/suivi-colis-card.js"
 CARD_JS_VERSION = "1.2.0"
 
-PLATFORMS = ["sensor"]
+PLATFORMS = ["sensor", "binary_sensor", "event"]
 
 SERVICE_ADD_PACKAGE = "add_package"
 SERVICE_REMOVE_PACKAGE = "remove_package"
@@ -240,6 +240,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         store=store,
         config=dict(entry.data),
         options=dict(entry.options),
+        config_entry=entry,
     )
 
     # Listen for option updates
@@ -299,7 +300,14 @@ async def _async_options_updated(
 ) -> None:
     """Handle options update."""
     coordinator: SuiviColisCoordinator = hass.data[DOMAIN][entry.entry_id]
+    old_mailboxes = {mb[MB_ID]: mb.get(MB_NAME) for mb in coordinator.options.get(CONF_MAILBOXES, [])}
     coordinator.options = dict(entry.options)
+    new_mailboxes = {mb[MB_ID]: mb.get(MB_NAME) for mb in entry.options.get(CONF_MAILBOXES, [])}
+    if new_mailboxes != old_mailboxes:
+        # Mailbox added, removed or renamed: reload to create/remove their
+        # diagnostic entities
+        hass.config_entries.async_schedule_reload(entry.entry_id)
+        return
     _async_sync_webhook(hass, entry, coordinator)
 
 

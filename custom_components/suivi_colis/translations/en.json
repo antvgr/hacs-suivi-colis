@@ -214,8 +214,66 @@
   },
   "entity": {
     "sensor": {
+      "package": {
+        "state": {
+          "unknown": "Unknown",
+          "info_received": "Info received",
+          "in_transit": "In transit",
+          "out_for_delivery": "Out for delivery",
+          "available_for_pickup": "Available for pickup",
+          "delivered": "Delivered",
+          "delivery_failure": "Delivery failure",
+          "exception": "Exception",
+          "expired": "Expired",
+          "not_found": "Not found"
+        }
+      },
+      "in_progress": {
+        "name": "Packages in progress"
+      },
+      "out_for_delivery_today": {
+        "name": "Deliveries today"
+      },
+      "to_pick_up": {
+        "name": "Packages to pick up"
+      },
+      "next_delivery": {
+        "name": "Next delivery"
+      },
       "quota_remain": {
         "name": "Remaining 17track quota"
+      },
+      "last_refresh": {
+        "name": "Last refresh"
+      }
+    },
+    "binary_sensor": {
+      "delivery_problem": {
+        "name": "Delivery problem"
+      },
+      "mailbox": {
+        "name": "Mailbox {name}"
+      }
+    },
+    "event": {
+      "status_changed": {
+        "name": "Status change",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "unknown": "Unknown",
+              "info_received": "Info received",
+              "in_transit": "In transit",
+              "out_for_delivery": "Out for delivery",
+              "available_for_pickup": "Available for pickup",
+              "delivered": "Delivered",
+              "delivery_failure": "Delivery failure",
+              "exception": "Exception",
+              "expired": "Expired",
+              "not_found": "Not found"
+            }
+          }
+        }
       }
     }
   },

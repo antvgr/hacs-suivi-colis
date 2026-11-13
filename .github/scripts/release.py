@@ -255,6 +255,20 @@ def min_ha_change(since: str | None, until: str) -> str | None:
     return new if new and new != old and since else None
 
 
+def commit_lines(commits: list[Commit], slug: str | None, heading: str) -> list[str]:
+    """Commits grouped by type, one bullet each with a link."""
+    grouped: dict[str, list[str]] = {}
+    for c in commits:
+        key, text, _ = commit_section(c.subject)
+        link = f"[{c.sha[:7]}](https://github.com/{slug}/commit/{c.sha})" if slug else c.sha[:7]
+        grouped.setdefault(key, []).append(f"- {text} ({link})")
+    lines: list[str] = []
+    for key, title in SECTIONS:
+        if key in grouped:
+            lines += [f"{heading} {title}", "", *grouped[key], ""]
+    return lines
+
+
 def build_notes(version: str, tag: str | None, until: str = "HEAD") -> str:
     """Release notes for the commits between tag and until."""
     slug = repo_slug()
@@ -262,9 +276,9 @@ def build_notes(version: str, tag: str | None, until: str = "HEAD") -> str:
     first_parent = [c for c in log(rev, "--first-parent") if not c.is_release]
     all_commits = [c for c in log(rev) if not c.is_release]
 
-    prs = [c.pr_number for c in first_parent if c.pr_number]
+    pr_merges = [c for c in first_parent if c.pr_number]
     direct = [c for c in first_parent if not c.pr_number and len(c.parents) < 2]
-    if tag is None and prs:
+    if tag is None and pr_merges:
         direct = []  # first release: the PRs describe it, not the whole history
 
     lines: list[str] = []
@@ -280,29 +294,38 @@ def build_notes(version: str, tag: str | None, until: str = "HEAD") -> str:
             lines.append(f"- {(note.group(1).strip() if note else commit_section(c.subject)[1])}")
         lines.append("")
 
-    for number in prs:
+    prs = [c.pr_number for c in pr_merges]
+    for merge in pr_merges:
+        number = merge.pr_number
         pr = github_api(f"repos/{slug}/pulls/{number}") if slug else None
         if not pr:
             lines += [f"## Pull request #{number}", ""]
-            continue
-        lines += [f"## {pr['title']} ([#{number}]({pr['html_url']}))", ""]
-        body = clean_pr_body(pr.get("body") or "")
-        if body:
-            lines += [body, ""]
+        else:
+            lines += [f"## {pr['title']} ([#{number}]({pr['html_url']}))", ""]
+            body = clean_pr_body(pr.get("body") or "")
+            if body:
+                lines += [body, ""]
+        # Every commit of the PR, in case the description missed some
+        if len(merge.parents) == 2:
+            pr_commits = [
+                c for c in log(f"{merge.parents[0]}..{merge.parents[1]}", "--no-merges")
+                if not c.is_release
+            ]
+            if pr_commits:
+                lines += [
+                    "<details>",
+                    f"<summary>Détail des {len(pr_commits)} commits</summary>",
+                    "",
+                    *commit_lines(pr_commits, slug, "####"),
+                    "</details>",
+                    "",
+                ]
 
     if direct:
-        grouped: dict[str, list[str]] = {}
         shown = direct[-MAX_COMMITS:]
-        for c in shown:
-            key, text, _ = commit_section(c.subject)
-            link = f"[{c.sha[:7]}](https://github.com/{slug}/commit/{c.sha})" if slug else c.sha[:7]
-            grouped.setdefault(key, []).append(f"- {text} ({link})")
-        heading = "##" if not prs else "###"
         if prs:
             lines += ["## Autres modifications", ""]
-        for key, title in SECTIONS:
-            if key in grouped:
-                lines += [f"{heading} {title}", "", *grouped[key], ""]
+        lines += commit_lines(shown, slug, "##" if not prs else "###")
         if len(direct) > len(shown):
             lines += [f"… et {len(direct) - len(shown)} modifications plus anciennes.", ""]
 

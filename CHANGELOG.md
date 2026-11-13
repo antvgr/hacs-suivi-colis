@@ -28,6 +28,24 @@
 - Entrée de configuration **2.1 → 2.2** : ajout de l'identifiant secret du webhook. C'est une version mineure, donc une version 2.x antérieure lit encore l'entrée. Une entrée v1 passe d'abord par 2.1.
 - Les nouveaux champs des colis (`carrier_code`, `tracking_stopped`) ont une valeur par défaut, donc les colis enregistrés par 1.0.x et 1.1.0 se chargent sans changement.
 
+<details>
+<summary>Détail des 4 commits</summary>
+
+##### Nouveautés
+
+- 17track webhook and change_carrier service ([0a2425a](https://github.com/antvgr/hacs-suivi-colis/commit/0a2425a7ad1c428bc7df74388f1542d32e81433c))
+- Card : redesign in Home Assistant style, keep package names ([2f37022](https://github.com/antvgr/hacs-suivi-colis/commit/2f370229057f3316520bc562186800dbb453d3ff))
+
+##### Corrections
+
+- Poll 17track again shortly after adding a package ([d1bd2ce](https://github.com/antvgr/hacs-suivi-colis/commit/d1bd2ce80fe289710a25947518131cb04dc1ced4))
+
+##### Documentation
+
+- Describe the new card in the README ([5bc4cae](https://github.com/antvgr/hacs-suivi-colis/commit/5bc4caee744e5a24596d129fcb78887c34228daf))
+
+</details>
+
 ---
 
 **Mise à jour** : HACS → Suivi de Colis → Mettre à jour, puis redémarrer Home Assistant et recharger la page du navigateur pour obtenir la nouvelle carte.
@@ -46,6 +64,23 @@ Même contenu que la PR proposée au dépôt original : hello-lemon/hacs-suivi-c
 - **Carte** : affiche le sous-statut, la livraison prévue et l'heure de livraison.
 - **CI** : hassfest, HACS et 39 tests à chaque push ; release automatique avec changelog à chaque merge sur `main`.
 - **Licence MIT**, icônes déplacées dans `brand/`.
+
+<details>
+<summary>Détail des 3 commits</summary>
+
+##### Documentation
+
+- Add MIT license ([ff73489](https://github.com/antvgr/hacs-suivi-colis/commit/ff734896c0a1086a410639a4ed244942da39151a))
+
+##### Maintenance
+
+- HACS/hassfest validation, tests and automatic releases ([346a931](https://github.com/antvgr/hacs-suivi-colis/commit/346a9312fa54dc1b4618e943050246e64937b9c0))
+
+##### Autres changements
+
+- Multiple IMAP mailboxes, reworked email setup and 17track API v2.4 ([53835e4](https://github.com/antvgr/hacs-suivi-colis/commit/53835e4f0cf852ab233b87b29628297368529403))
+
+</details>
 
 ---
 

@@ -15,7 +15,7 @@ Suivi de plus de 1200 transporteurs (Chronopost, Colissimo, DHL, UPS, Amazon, Ca
 - **Détection automatique du transporteur** à partir du format du numéro de suivi, avec fallback auto-détection 17track si rejeté
 - **Scan IMAP multi-boîtes** : détection automatique des numéros de suivi depuis une ou plusieurs boîtes mail (perso ou dédiées)
 - **Suppression automatique** des colis livrés après un délai configurable
-- **Carte Lovelace** incluse avec historique dépliable au clic et suppression des colis livrés
+- **Carte Lovelace** incluse, au style de Home Assistant (thèmes clair et sombre) : résumé en badges, colis regroupés par urgence (action requise, en route, livrés), date de livraison prévue, historique au clic, ajout d'un colis avec un nom et un transporteur.
 
 ## Installation
 
@@ -76,6 +76,16 @@ Home Assistant doit être joignable depuis Internet : avec Nabu Casa, l'URL est 
 
 - **Archivage automatique** : nombre de jours après livraison avant suppression (défaut : 2, 0 = désactivé)
 - **Intervalle de vérification emails** : en minutes (défaut : 15)
+
+## Carte
+
+Ajoutez la carte **Suivi de Colis** depuis l'éditeur de tableau de bord, ou en YAML :
+
+```yaml
+type: custom:suivi-colis-card
+title: Colis          # optionnel
+show_delivered: true  # optionnel, afficher les colis livrés
+```
 
 ## Services
 

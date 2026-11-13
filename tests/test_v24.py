@@ -198,3 +198,18 @@ async def test_rejected_numbers_are_ignored_not_errors():
     c._request = AsyncMock(return_value={"code": 0, "data": {"accepted": [], "rejected": [
         {"number": "CH514085194DE", "error": {"code": -18019909, "message": "No tracking information at this time."}}]}})
     assert await c.get_track_info(["CH514085194DE"]) == {}
+
+
+async def test_sensor_shows_package_name(hass):
+    """The name given when adding a package is the sensor name; the id keeps the number."""
+    named = Package("6A12345678901", friendly_name="Clavier MX Keys")
+    plain = Package("XA123456789FR")
+    store = MagicMock()
+    store.get_package = {p.tracking_number: p for p in (named, plain)}.get
+    coord = _coordinator(hass, store, MagicMock())
+
+    s1 = SuiviColisSensor(coord, named, MagicMock())
+    s2 = SuiviColisSensor(coord, plain, MagicMock())
+    assert s1.name == "Clavier MX Keys" and s1.entity_id == "sensor.6a12345678901"
+    assert s1.extra_state_attributes["package_name"] == "Clavier MX Keys"
+    assert s2.name == "XA123456789FR" and s2.extra_state_attributes["package_name"] == ""

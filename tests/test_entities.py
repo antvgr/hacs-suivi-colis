@@ -160,3 +160,23 @@ async def test_removing_a_mailbox_removes_its_entity(hass, setup):
         await hass.async_block_till_done()
 
     assert registry.async_get_entity_id("binary_sensor", DOMAIN, uid) is None
+
+
+async def test_diagnostics_redact_secrets_and_expose_raw_17track(hass, setup):
+    """Diagnostics show the raw 17track data without any secret."""
+    from custom_components.suivi_colis.diagnostics import (
+        async_get_config_entry_diagnostics,
+    )
+
+    entry, _ = setup
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    raw = {"number": "CH514085194DE", "carrier": 7041, "track_info": {"time_metrics": {}}}
+    coordinator.api_client.parse_tracked_item(raw)
+
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert diag["entry"]["data"] == {"api_key": "**REDACTED**", "webhook_id": "**REDACTED**"}
+    mailbox = diag["entry"]["options"]["mailboxes"][0]
+    assert mailbox["password"] == "**REDACTED**" and mailbox["username"] == "**REDACTED**"
+    assert diag["raw_17track"]["CH514085194DE"] == raw
+    assert len(diag["packages"]) == 5

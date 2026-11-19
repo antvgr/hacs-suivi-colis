@@ -243,6 +243,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         config_entry=entry,
     )
 
+    # Clean up packages created from email markup by older versions
+    await coordinator.async_remove_invalid_email_packages()
+
     # Listen for option updates
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
 

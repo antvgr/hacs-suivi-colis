@@ -158,8 +158,8 @@ EMAIL_DOMAIN_CARRIER_MAP = {
 
 # Tracking number regex for extraction from emails — pre-compiled
 TRACKING_NUMBER_PATTERNS = [
-    re.compile(r"(?:suivi|tracking|n[°o]?\s*(?:de\s+)?colis|shipment)\s*[:=]?\s*([A-Z0-9]{10,30})", re.IGNORECASE),
-    re.compile(r"(?:track|suivre)[^\n]*?([A-Z0-9]{10,30})", re.IGNORECASE),
+    re.compile(r"(?:suivi|tracking|n[°o]?\s*(?:de\s+)?colis|shipment)\s*[:=]?\s*\b([A-Z0-9]{10,30})\b", re.IGNORECASE),
+    re.compile(r"(?:track|suivre)[^\n]*?\b([A-Z0-9]{10,30})\b", re.IGNORECASE),
     re.compile(r"\b(1Z[A-Z0-9]{16})\b", re.IGNORECASE),           # UPS
     re.compile(r"\b(TBA\d{12,})\b", re.IGNORECASE),               # Amazon
     re.compile(r"\b([A-Z]{2}\d{9}FR)\b", re.IGNORECASE),          # Chronopost/Colissimo

@@ -30,7 +30,11 @@ from .const import (
     MB_NAME,
     MB_SERVER,
 )
-from .email_parser import ExtractedPackage, run_imap_fetch
+from .email_parser import (
+    ExtractedPackage,
+    is_plausible_tracking_number,
+    run_imap_fetch,
+)
 from .models import Package, PackageSource, PackageStatus
 from .store import SuiviColisStore
 
@@ -346,6 +350,13 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
             _LOGGER.warning("Package %s already tracked", tracking_number)
             return False
 
+        # Never spend 17track quota on a word picked up from an email
+        if source == PackageSource.EMAIL and not is_plausible_tracking_number(
+            tracking_number
+        ):
+            _LOGGER.debug("Ignoring implausible tracking number %s", tracking_number)
+            return False
+
         # Auto-detect carrier if not specified
         if not carrier or carrier == "unknown":
             carrier = detect_carrier_from_number(tracking_number)
@@ -428,6 +439,31 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
         await self.store.async_save()
         await self.async_request_refresh()
         return True
+
+    async def async_remove_invalid_email_packages(self) -> int:
+        """Remove packages wrongly created from email markup.
+
+        Before 1.3.1 the email parser could read HTML/CSS words such as
+        "DECORATION" or "INGNUMBERROW" as tracking numbers, creating a new
+        sensor for each carrier update email.
+        """
+        invalid = [
+            pkg.tracking_number
+            for pkg in self.store.packages.values()
+            if pkg.source == PackageSource.EMAIL
+            and not is_plausible_tracking_number(pkg.tracking_number)
+        ]
+        for number in invalid:
+            self.store.remove_package(number)
+            self._remove_entity(number)
+            try:
+                await self.api_client.stop_tracking(number)
+            except Api17TrackError as err:
+                _LOGGER.debug("Failed to stop 17track for %s: %s", number, err)
+            _LOGGER.warning("Removed invalid tracking number %s found in an email", number)
+        if invalid:
+            await self.store.async_save()
+        return len(invalid)
 
     async def archive_delivered(self) -> int:
         """Archive all delivered packages. Returns count."""

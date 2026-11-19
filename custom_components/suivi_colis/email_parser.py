@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import html
 import logging
+import re
 import socket
 import ssl
 from dataclasses import dataclass, field
@@ -209,6 +211,43 @@ def run_imap_fetch(
     return results
 
 
+_HTML_DROP = re.compile(
+    r"<(style|script|head)\b.*?</\1\s*>|<!--.*?-->", re.IGNORECASE | re.DOTALL
+)
+_HTML_TAG = re.compile(r"<[^>]+>")
+
+
+def html_to_text(html_body: str) -> str:
+    """Visible text of an HTML body.
+
+    Tag names, attributes and CSS (``trackingNumberRow``, ``text-decoration``…)
+    must not be read as tracking numbers.
+    """
+    text = _HTML_DROP.sub(" ", html_body)
+    text = _HTML_TAG.sub(" ", text)
+    return html.unescape(text)
+
+
+def is_plausible_tracking_number(number: str) -> bool:
+    """A tracking number has at least 10 characters and contains digits."""
+    return len(number) >= 10 and any(c.isdigit() for c in number)
+
+
+def extract_tracking_numbers(subject: str, text: str, html_body: str) -> set[str]:
+    """Tracking numbers found in an email (subject, text and HTML parts)."""
+    # Limit to 50KB to avoid performance issues
+    content = f"{subject}\n{text}\n{html_to_text(html_body)}"[:50000]
+    found: set[str] = set()
+    for pattern in TRACKING_NUMBER_PATTERNS:
+        for match in pattern.finditer(content):
+            number = (
+                match.group(1).upper() if match.lastindex else match.group(0).upper()
+            )
+            if is_plausible_tracking_number(number):
+                found.add(number)
+    return found
+
+
 def _extract_from_message(
     msg, dedicated: bool, known_numbers: set[str], results: list[ExtractedPackage]
 ) -> bool:
@@ -221,16 +260,7 @@ def _extract_from_message(
     if not dedicated and carrier_from_email == "unknown":
         return False
 
-    # Extract tracking numbers — limit to 50KB to avoid performance issues
-    text = f"{subject}\n{msg.text or ''}\n{msg.html or ''}"[:50000]
-    found: set[str] = set()
-    for pattern in TRACKING_NUMBER_PATTERNS:
-        for match in pattern.finditer(text):
-            number = (
-                match.group(1).upper() if match.lastindex else match.group(0).upper()
-            )
-            if len(number) >= 10:
-                found.add(number)
+    found = extract_tracking_numbers(subject, msg.text or "", msg.html or "")
 
     name = subject.strip()[:60]
 

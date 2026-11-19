@@ -57,6 +57,7 @@ from .const import (
     SECURITY_STARTTLS,
 )
 from .coordinator import SuiviColisCoordinator
+from .models import normalize_tracking_number
 from .store import SuiviColisStore
 from .webhook import async_register_webhook, async_unregister_webhook
 
@@ -243,6 +244,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         config_entry=entry,
     )
 
+    # Clean up packages created from email markup by older versions
+    await coordinator.async_remove_invalid_email_packages()
+
     # Listen for option updates
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
 
@@ -354,7 +358,7 @@ def _register_services(
         await coordinator.async_request_refresh()
 
     async def handle_change_carrier(call: ServiceCall) -> None:
-        number = call.data["tracking_number"].strip().upper()
+        number = normalize_tracking_number(call.data["tracking_number"])
         if "carrier_code" in call.data:
             code = call.data["carrier_code"]
             name = call.data.get("carrier") or ""

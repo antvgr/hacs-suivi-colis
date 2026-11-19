@@ -30,8 +30,12 @@ from .const import (
     MB_NAME,
     MB_SERVER,
 )
-from .email_parser import ExtractedPackage, run_imap_fetch
-from .models import Package, PackageSource, PackageStatus
+from .email_parser import (
+    ExtractedPackage,
+    is_plausible_tracking_number,
+    run_imap_fetch,
+)
+from .models import Package, PackageSource, PackageStatus, normalize_tracking_number
 from .store import SuiviColisStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -222,7 +226,7 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
         now = datetime.now()
         updated = 0
         for item in items:
-            number = str(item.get("number") or "").strip().upper()
+            number = normalize_tracking_number(item.get("number") or "")
             pkg = self.store.get_package(number)
             if pkg is None:
                 _LOGGER.debug("17track push for untracked number %s ignored", number)
@@ -243,7 +247,7 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
         self, tracking_number: str, new_code: int, carrier_name: str
     ) -> None:
         """Track a package with another carrier. Raises Api17TrackError."""
-        tracking_number = tracking_number.strip().upper()
+        tracking_number = normalize_tracking_number(tracking_number)
         pkg = self.store.get_package(tracking_number)
         if pkg is None:
             raise Api17TrackError(f"Package {tracking_number} is not tracked")
@@ -274,7 +278,8 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
 
     async def _check_emails(self) -> None:
         """Check every enabled mailbox for new tracking numbers."""
-        known = set(self.store.packages.keys())
+        # Tracked, archived and recently removed numbers are never imported again
+        known = set(self.store.packages.keys()) | self.store.removed_numbers
         extracted: list[ExtractedPackage] = []
 
         for mailbox in self.mailboxes:
@@ -325,6 +330,7 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
 
         for number in to_remove:
             self.store.remove_package(number)
+            self.store.mark_removed(number)
             self._remove_entity(number)
             try:
                 await self.api_client.stop_tracking(number)
@@ -340,10 +346,20 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
         source: str = PackageSource.MANUAL,
     ) -> bool:
         """Add a new package and register with 17track."""
-        tracking_number = tracking_number.strip().upper()
+        tracking_number = normalize_tracking_number(tracking_number)
 
         if self.store.has_package(tracking_number):
             _LOGGER.warning("Package %s already tracked", tracking_number)
+            return False
+
+        # Never spend 17track quota on a word picked up from an email
+        if source == PackageSource.EMAIL and not is_plausible_tracking_number(
+            tracking_number
+        ):
+            _LOGGER.debug("Ignoring implausible tracking number %s", tracking_number)
+            return False
+        if source == PackageSource.EMAIL and tracking_number in self.store.removed_numbers:
+            _LOGGER.debug("Not importing removed package %s again", tracking_number)
             return False
 
         # Auto-detect carrier if not specified
@@ -369,6 +385,8 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
             source=source,
         )
         self.store.add_package(pkg)
+        # Added back by hand: a later removal is remembered afresh
+        self.store.forget_removed(tracking_number)
         await self.store.async_save()
 
         # Trigger an immediate refresh
@@ -413,11 +431,13 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
 
     async def remove_package(self, tracking_number: str) -> bool:
         """Remove a package and stop tracking on 17track."""
-        tracking_number = tracking_number.strip().upper()
+        tracking_number = normalize_tracking_number(tracking_number)
 
         pkg = self.store.remove_package(tracking_number)
         if not pkg:
             return False
+        # Do not import it again from an email still in the search window
+        self.store.mark_removed(tracking_number)
 
         try:
             await self.api_client.stop_tracking(tracking_number)
@@ -428,6 +448,31 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
         await self.store.async_save()
         await self.async_request_refresh()
         return True
+
+    async def async_remove_invalid_email_packages(self) -> int:
+        """Remove packages wrongly created from email markup.
+
+        Before 1.3.1 the email parser could read HTML/CSS words such as
+        "DECORATION" or "INGNUMBERROW" as tracking numbers, creating a new
+        sensor for each carrier update email.
+        """
+        invalid = [
+            pkg.tracking_number
+            for pkg in self.store.packages.values()
+            if pkg.source == PackageSource.EMAIL
+            and not is_plausible_tracking_number(pkg.tracking_number)
+        ]
+        for number in invalid:
+            self.store.remove_package(number)
+            self._remove_entity(number)
+            try:
+                await self.api_client.stop_tracking(number)
+            except Api17TrackError as err:
+                _LOGGER.debug("Failed to stop 17track for %s: %s", number, err)
+            _LOGGER.warning("Removed invalid tracking number %s found in an email", number)
+        if invalid:
+            await self.store.async_save()
+        return len(invalid)
 
     async def archive_delivered(self) -> int:
         """Archive all delivered packages. Returns count."""

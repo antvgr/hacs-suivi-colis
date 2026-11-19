@@ -7,6 +7,14 @@ from datetime import datetime
 from enum import StrEnum
 
 
+def normalize_tracking_number(value: str) -> str:
+    """Canonical form of a tracking number: upper case, no whitespace.
+
+    "1z wv4 998 6892191508" and "1ZWV49986892191508" are the same package.
+    """
+    return "".join(str(value).split()).upper()
+
+
 def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
 

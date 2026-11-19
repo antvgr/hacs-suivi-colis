@@ -270,6 +270,7 @@ async def test_migration_v1_without_imap(hass):
 async def test_coordinator_checks_all_enabled_mailboxes(hass):
     store = MagicMock()
     store.packages = {"EXISTING1234": object()}
+    store.removed_numbers = {"REMOVED12345"}
     options = {
         CONF_MAILBOXES: [
             {**MB, "id": "1", "name": "A"},
@@ -298,6 +299,7 @@ async def test_coordinator_checks_all_enabled_mailboxes(hass):
         await coord._check_emails()
 
     assert len(seen_known) == 2  # disabled mailbox skipped
+    assert "REMOVED12345" in seen_known[0]  # removed packages are not re-imported
     assert "1Z9999999999999999" in seen_known[1]  # dedup shared across mailboxes
     coord.add_package.assert_awaited_once()
     assert coord.mailbox_status["1"]["found"] == 1 and coord.mailbox_status["1"]["error"] is None

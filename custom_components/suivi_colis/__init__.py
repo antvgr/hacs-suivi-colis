@@ -57,6 +57,7 @@ from .const import (
     SECURITY_STARTTLS,
 )
 from .coordinator import SuiviColisCoordinator
+from .models import normalize_tracking_number
 from .store import SuiviColisStore
 from .webhook import async_register_webhook, async_unregister_webhook
 
@@ -357,7 +358,7 @@ def _register_services(
         await coordinator.async_request_refresh()
 
     async def handle_change_carrier(call: ServiceCall) -> None:
-        number = call.data["tracking_number"].strip().upper()
+        number = normalize_tracking_number(call.data["tracking_number"])
         if "carrier_code" in call.data:
             code = call.data["carrier_code"]
             name = call.data.get("carrier") or ""

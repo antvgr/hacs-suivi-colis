@@ -86,3 +86,78 @@ async def test_add_package_skips_implausible_email_number(hass):
 
     assert not await coord.add_package("INGNUMBERROW", "ups", source="email")
     api.register_package.assert_not_awaited()
+
+
+# ------------------------------------------------- normalization and removal
+
+from custom_components.suivi_colis.models import normalize_tracking_number  # noqa: E402
+from custom_components.suivi_colis.store import SuiviColisStore  # noqa: E402
+
+
+def test_normalize_tracking_number():
+    """Spaces typed by hand do not create a second package."""
+    assert normalize_tracking_number(" 1z wv4 998\t6892191508 ") == "1ZWV49986892191508"
+
+
+async def test_manual_number_with_spaces_matches_email(hass):
+    """A number typed with spaces is stored like the one found in emails."""
+    store = _store()
+    store.has_package = MagicMock(return_value=False)
+    store.add_package = MagicMock()
+    store.forget_removed = MagicMock()
+    api = MagicMock()
+    api.register_package = AsyncMock(return_value=True)
+    coord = _coordinator(hass, store, api)
+    coord.async_request_refresh = AsyncMock()
+    coord._schedule_followup_refreshes = MagicMock()
+
+    assert await coord.add_package("1z wv4 998 6892191508", "ups")
+
+    api.register_package.assert_awaited_once_with("1ZWV49986892191508", "ups")
+    assert store.add_package.call_args[0][0].tracking_number == "1ZWV49986892191508"
+
+
+async def test_removed_package_is_not_imported_again(hass):
+    """A package removed by hand is not re-created from a recent email."""
+    pkg = Package("1ZWV49986892191508", carrier="ups", source="manual")
+    store = SuiviColisStore(hass)
+    store.add_package(pkg)
+    store.async_save = AsyncMock()
+    api = MagicMock()
+    api.stop_tracking = AsyncMock()
+    api.register_package = AsyncMock(return_value=True)
+    coord = _coordinator(hass, store, api)
+    coord.async_request_refresh = AsyncMock()
+    coord._schedule_followup_refreshes = MagicMock()
+
+    assert await coord.remove_package("1ZWV49986892191508")
+    assert "1ZWV49986892191508" in store.removed_numbers
+
+    # Found again in an email: ignored, no quota spent
+    assert not await coord.add_package("1ZWV49986892191508", "ups", source="email")
+    api.register_package.assert_not_awaited()
+
+    # Added back by hand: allowed, and no longer in the removed list
+    assert await coord.add_package("1ZWV49986892191508", "ups")
+    assert "1ZWV49986892191508" not in store.removed_numbers
+
+
+async def test_removed_numbers_are_persisted_and_pruned(hass):
+    """The removed list survives a restart and forgets entries after 120 days."""
+    from datetime import datetime, timedelta
+
+    store = SuiviColisStore(hass)
+    store._store.async_load = AsyncMock(return_value={
+        "packages": [],
+        "removed": {
+            "RECENT123456": datetime.now().isoformat(),
+            "OLD123456789": (datetime.now() - timedelta(days=200)).isoformat(),
+        },
+    })
+    await store.async_load()
+    assert store.removed_numbers == {"RECENT123456"}
+
+    store._store.async_save = AsyncMock()
+    await store.async_save()
+    saved = store._store.async_save.call_args[0][0]
+    assert list(saved["removed"]) == ["RECENT123456"]

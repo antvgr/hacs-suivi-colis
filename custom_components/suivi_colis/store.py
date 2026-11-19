@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -10,6 +11,10 @@ from homeassistant.helpers.storage import Store
 
 from .const import STORAGE_KEY, STORAGE_VERSION
 from .models import Package
+
+# Removed numbers are remembered longer than the longest email search window
+# (90 days) so an old email cannot bring a removed package back
+REMOVED_RETENTION = timedelta(days=120)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -21,6 +26,9 @@ class SuiviColisStore:
         """Initialize."""
         self._store = Store[dict[str, Any]](hass, STORAGE_VERSION, STORAGE_KEY)
         self._packages: dict[str, Package] = {}
+        # Tracking number -> removal date of the packages removed by the user
+        # or auto-removed after delivery: never re-imported from emails
+        self._removed: dict[str, datetime] = {}
 
     @property
     def packages(self) -> dict[str, Package]:
@@ -42,12 +50,20 @@ class SuiviColisStore:
                     self._packages[pkg.tracking_number] = pkg
                 except (KeyError, ValueError) as err:
                     _LOGGER.warning("Skipping invalid package data: %s", err)
+        for number, removed_at in ((data or {}).get("removed") or {}).items():
+            try:
+                self._removed[number] = datetime.fromisoformat(removed_at)
+            except (TypeError, ValueError):
+                continue
+        self._prune_removed()
         _LOGGER.debug("Loaded %d packages from storage", len(self._packages))
 
     async def async_save(self) -> None:
         """Save packages to storage."""
+        self._prune_removed()
         data = {
-            "packages": [pkg.to_dict() for pkg in self._packages.values()]
+            "packages": [pkg.to_dict() for pkg in self._packages.values()],
+            "removed": {n: d.isoformat() for n, d in self._removed.items()},
         }
         await self._store.async_save(data)
 
@@ -58,6 +74,23 @@ class SuiviColisStore:
     def remove_package(self, tracking_number: str) -> Package | None:
         """Remove a package (does not persist, call async_save after)."""
         return self._packages.pop(tracking_number, None)
+
+    @property
+    def removed_numbers(self) -> set[str]:
+        """Tracking numbers removed recently, not to be imported again."""
+        return set(self._removed)
+
+    def mark_removed(self, tracking_number: str) -> None:
+        """Remember a removed package (does not persist, call async_save after)."""
+        self._removed[tracking_number] = datetime.now()
+
+    def forget_removed(self, tracking_number: str) -> None:
+        """Allow a removed number again (e.g. added back by hand)."""
+        self._removed.pop(tracking_number, None)
+
+    def _prune_removed(self) -> None:
+        cutoff = datetime.now() - REMOVED_RETENTION
+        self._removed = {n: d for n, d in self._removed.items() if d >= cutoff}
 
     def get_package(self, tracking_number: str) -> Package | None:
         """Get a package by tracking number."""

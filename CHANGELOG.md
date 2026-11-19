@@ -1,5 +1,47 @@
 # Changelog
 
+## v1.3.1 — 2026-11-19
+
+### fix: faux colis créés depuis les emails, doublons et réimports ([#4](https://github.com/antvgr/hacs-suivi-colis/pull/4))
+
+#### Problème
+
+Chaque email de mise à jour UPS (« Mise à jour UPS : le colis est programmé en livraison demain ») créait de nouveaux capteurs : `sensor.decoration`, `sensor.ingnumberrow`…
+
+Le parseur analysait le HTML brut. Le motif générique `track…[A-Z0-9]{10,30}` (insensible à la casse) attrapait du balisage :
+- `class="trackingNumberRow"` → `INGNUMBERROW`
+- `text-decoration` (CSS) → `DECORATION`
+
+17track accepte ces « numéros » à l'enregistrement (1 crédit de quota chacun), puis renvoie `not_found`.
+
+#### Corrections
+
+**Extraction depuis les emails**
+- Analyse uniquement le texte visible du HTML (sans balises, `<style>`, `<script>`, `<head>`, commentaires ; entités décodées)
+- Limites de mot (`\b`) sur les motifs génériques
+- Un numéro doit contenir au moins un chiffre
+- Un numéro douteux venant d'un email n'est jamais enregistré sur 17track (pas de quota dépensé)
+- Au démarrage, les colis créés par erreur depuis un email (numéro sans chiffre) sont supprimés
+
+**Doublons / réimports**
+- Numéros normalisés partout (majuscules, sans espaces) : un numéro saisi à la main avec des espaces correspond à celui trouvé dans les mails
+- Les colis supprimés (à la main ou automatiquement après livraison) sont mémorisés 120 jours (plus que la fenêtre de recherche max de 90 jours) et ne sont plus réimportés depuis un email ; les rajouter à la main reste possible. Liste persistée dans le store (`removed`).
+
+<details>
+<summary>Détail des 2 commits</summary>
+
+##### Corrections
+
+- Email : stop creating packages from HTML/CSS words in carrier emails ([4115231](https://github.com/antvgr/hacs-suivi-colis/commit/411523140a64a70b2a158278b8923217033a5dd8))
+- No duplicate or re-imported packages from emails ([ab5fe38](https://github.com/antvgr/hacs-suivi-colis/commit/ab5fe38cbccb8fa3feb7d30fd092ed9839aecab3))
+
+</details>
+
+---
+
+**Mise à jour** : HACS → Suivi de Colis → Mettre à jour, puis redémarrer Home Assistant et recharger la page du navigateur pour obtenir la nouvelle carte.
+**Toutes les modifications** : https://github.com/antvgr/hacs-suivi-colis/compare/v1.3.0...v1.3.1
+
 ## v1.3.0 — 2026-11-13
 
 ### ⚠️ À lire avant de mettre à jour

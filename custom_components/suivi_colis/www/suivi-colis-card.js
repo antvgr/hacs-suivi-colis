@@ -12,7 +12,7 @@
  *   show_delivered: true
  */
 
-const CARD_VERSION = "1.4.2";
+const CARD_VERSION = "1.4.3";
 
 // status -> label, icon, theme colour variable (+ fallback), group
 const STATUS = {

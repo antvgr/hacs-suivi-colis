@@ -20,5 +20,5 @@
     "imap-tools>=1.7.0"
   ],
   "single_config_entry": true,
-  "version": "1.4.2"
+  "version": "1.4.3"
 }

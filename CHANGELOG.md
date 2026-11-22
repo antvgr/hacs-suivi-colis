@@ -1,5 +1,65 @@
 # Changelog
 
+## v1.4.3 — 2026-11-22
+
+### ci(release): commit et tag poussés ensemble, reprise d'une release inachevée ([#8](https://github.com/antvgr/hacs-suivi-colis/pull/8))
+
+#### Problème
+
+Le workflow Release de la v1.4.2 a poussé `chore(release): v1.4.2` sur `main`, puis GitHub a refusé le tag sans raison :
+
+```
+! [remote rejected] v1.4.2 -> v1.4.2 (failed)
+error: failed to push some refs to 'https://github.com/antvgr/hacs-suivi-colis'
+```
+
+Résultat : ni tag ni release GitHub, HACS ne voit pas la v1.4.2. Relancer le workflow aurait créé un second commit de release et dupliqué l'entrée du CHANGELOG.
+
+#### Correction (`.github/scripts/release.py`)
+
+- **Reprise** : un commit de release présent sur `main` sans son tag est terminé (tag posé sur ce commit, release GitHub avec ses notes), sans nouvelle release.
+- **Push atomique** : commit et tag envoyés ensemble (`git push --atomic`), jusqu'à 3 essais. Plus de release à moitié publiée.
+
+Au merge de cette PR, le workflow terminera la v1.4.2. Ce changement partira dans la release suivante.
+
+<details>
+<summary>Détail des 1 commits</summary>
+
+##### Maintenance
+
+- Release : push commit and tag atomically, finish half-done releases ([75c671b](https://github.com/antvgr/hacs-suivi-colis/commit/75c671b43707b2f0db8d476e0a08f996a014150e))
+
+</details>
+
+### fix(laposte): appliquer les heures du créneau au jour de livraison prévu ([#9](https://github.com/antvgr/hacs-suivi-colis/pull/9))
+
+#### Problème
+
+Sur un vrai colis Colissimo, la réponse `suivi-unifie` (vue dans les diagnostics) donne :
+
+- `estimDate` : `2026-11-23T01:00:00+01:00` (lundi 23)
+- `estimHourMin` / `estimHourMax` : `2026-11-22T08:30` → `2026-11-22T12:30` (dimanche 22)
+
+La Poste date le créneau du jour où l'estimation est calculée, pas forcément du jour de livraison. Le créneau était donc écarté et le calendrier affichait tout le lundi.
+
+#### Correction
+
+Seules les heures du créneau sont utilisées, appliquées au jour de `estimDate` : lundi 23, 08:30 → 12:30. Sans créneau valide (absent, ou fin avant début), la journée entière reste renvoyée.
+
+<details>
+<summary>Détail des 1 commits</summary>
+
+##### Corrections
+
+- Laposte : apply the slot hours to the estimated delivery day ([cdf923f](https://github.com/antvgr/hacs-suivi-colis/commit/cdf923f1ffc64a7bda338157bf75659faab59150))
+
+</details>
+
+---
+
+**Mise à jour** : HACS → Suivi de Colis → Mettre à jour, puis redémarrer Home Assistant et recharger la page du navigateur pour obtenir la nouvelle carte.
+**Toutes les modifications** : https://github.com/antvgr/hacs-suivi-colis/compare/v1.4.2...v1.4.3
+
 ## v1.4.2 — 2026-11-22
 
 ### fix(laposte): ne plus fermer la session La Poste ; réponse brute dans les diagnostics ([#7](https://github.com/antvgr/hacs-suivi-colis/pull/7))

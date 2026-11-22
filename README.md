@@ -107,7 +107,7 @@ Un capteur par colis en cours, nommé d'après le nom que vous lui avez donné, 
   - `tracking_number`, `package_name`, `carrier` ;
   - `sub_status` : statut détaillé 17track, par exemple `DeliveryFailure_NoBody` ;
   - `info_text`, `location` ;
-  - `estimated_delivery_from` / `estimated_delivery_to`, `delivered_at` ;
+  - `estimated_delivery_from` / `estimated_delivery_to`, `delivered_at` ; pour les colis Colissimo / La Poste, le jour et le créneau de livraison sont demandés à La Poste (`estimated_delivery_source: La Poste`), sinon ils viennent de 17track ;
   - `events` : l'historique, qui n'est pas enregistré dans la base de données pour ne pas la faire grossir ;
   - `tracking_stopped` : 17track a arrêté le suivi.
 

@@ -10,6 +10,7 @@ from collections.abc import Callable
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
@@ -35,6 +36,7 @@ from .email_parser import (
     is_plausible_tracking_number,
     run_imap_fetch,
 )
+from .laposte import LAPOSTE_SOURCE, async_get_estimate, is_laposte_package
 from .models import Package, PackageSource, PackageStatus, normalize_tracking_number
 from .store import SuiviColisStore
 
@@ -155,6 +157,27 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
             if pkg:
                 self._apply_track_data(pkg, data, now)
 
+        await self._update_laposte_estimates()
+
+    async def _update_laposte_estimates(self) -> None:
+        """Delivery day and time slot of Colissimo packages from La Poste."""
+        session = async_get_clientsession(self.hass)
+        for pkg in list(self.store.active_packages.values()):
+            if pkg.status == PackageStatus.DELIVERED or not is_laposte_package(pkg):
+                continue
+            answered, estimate = await async_get_estimate(session, pkg.tracking_number)
+            if not answered:
+                continue  # keep what we have
+            if estimate:
+                pkg.estimated_delivery_from = estimate["from"]
+                pkg.estimated_delivery_to = estimate["to"]
+                pkg.estimated_delivery_source = LAPOSTE_SOURCE
+            elif pkg.estimated_delivery_source == LAPOSTE_SOURCE:
+                # La Poste has no estimate any more: back to 17track's
+                pkg.estimated_delivery_from = None
+                pkg.estimated_delivery_to = None
+                pkg.estimated_delivery_source = ""
+
     def _apply_track_data(self, pkg: Package, data: dict, now: datetime) -> None:
         """Apply parsed 17track data (polling or webhook) to a package."""
         old_status = pkg.status
@@ -164,9 +187,11 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
         pkg.status = data["status"]
         pkg.sub_status = data.get("sub_status", "")
         pkg.sub_status_descr = data.get("sub_status_descr", "")
-        pkg.estimated_delivery_from = data.get("estimated_delivery_from")
-        pkg.estimated_delivery_to = data.get("estimated_delivery_to")
-        pkg.estimated_delivery_source = data.get("estimated_delivery_source", "")
+        # The La Poste slot is more precise: kept until La Poste drops it
+        if pkg.estimated_delivery_source != LAPOSTE_SOURCE:
+            pkg.estimated_delivery_from = data.get("estimated_delivery_from")
+            pkg.estimated_delivery_to = data.get("estimated_delivery_to")
+            pkg.estimated_delivery_source = data.get("estimated_delivery_source", "")
         pkg.info_text = data["info_text"]
         pkg.location = data["location"]
         pkg.events = data["events"]

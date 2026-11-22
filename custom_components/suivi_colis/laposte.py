@@ -21,7 +21,31 @@ from .models import Package
 
 _LOGGER = logging.getLogger(__name__)
 
-LAPOSTE_URL = "https://www.laposte.fr/ssu/sun/back/suivi-unifie/{}"
+LAPOSTE_URL = "https://www.laposte.fr/ssu/sun/back/suivi-unifie/{}?lang=fr"
+# Tracking page: opening it first gives the session cookies the service
+# requires (a direct call is refused with HTTP 403)
+LAPOSTE_PAGE_URL = "https://www.laposte.fr/outils/suivre-vos-envois?code={}"
+_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36"
+)
+_PAGE_HEADERS = {
+    "User-Agent": _USER_AGENT,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "fr-FR,fr;q=0.9",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Upgrade-Insecure-Requests": "1",
+}
+_API_HEADERS = {
+    "User-Agent": _USER_AGENT,
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "fr-FR,fr;q=0.9",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
+}
 LAPOSTE_SOURCE = "La Poste"
 LAPOSTE_CARRIERS = {"colissimo", "laposte"}
 LAPOSTE_17TRACK_CODE = 6051
@@ -72,11 +96,19 @@ def parse_estimate(payload: Any) -> dict | None:
 async def async_get_estimate(
     session: aiohttp.ClientSession, tracking_number: str
 ) -> tuple[bool, dict | None]:
-    """Ask La Poste. Returns (answered, estimate or None)."""
+    """Ask La Poste like the laposte.fr tracking page does.
+
+    ``session`` must keep cookies (its own cookie jar): the tracking page is
+    opened first, then the service is called with the cookies it set.
+    Returns (answered, estimate or None).
+    """
+    page_url = LAPOSTE_PAGE_URL.format(tracking_number)
     try:
+        async with session.get(page_url, headers=_PAGE_HEADERS, timeout=_TIMEOUT) as resp:
+            await resp.read()
         async with session.get(
             LAPOSTE_URL.format(tracking_number),
-            headers={"Accept": "application/json", "Accept-Language": "fr-FR"},
+            headers={**_API_HEADERS, "Referer": page_url},
             timeout=_TIMEOUT,
         ) as resp:
             if resp.status != 200:

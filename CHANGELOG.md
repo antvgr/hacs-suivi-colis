@@ -1,5 +1,45 @@
 # Changelog
 
+## v1.4.0 — 2026-11-22
+
+### feat: calendrier des livraisons, créneau Colissimo via La Poste, diagnostics ([#5](https://github.com/antvgr/hacs-suivi-colis/pull/5))
+
+#### Calendrier « Livraisons »
+
+Nouvelle entité `calendar` (`calendar.suivi_de_colis_livraisons`) :
+- un événement « Livraison : <colis> » par colis non livré ayant une date prévue ;
+- événement horodaté sur le créneau quand il est connu (La Poste, transporteur) ;
+- événement sur la journée entière quand seul le jour est connu (17track envoie minuit UTC, géré été comme hiver) ;
+- description : numéro de suivi, transporteur, dernier événement, source de l'estimation.
+
+#### Créneau de livraison Colissimo / La Poste
+
+Pour un colis Colissimo / La Poste, le service public de suivi La Poste (`/ssu/sun/back/suivi-unifie/<numéro>`, utilisé par laposte.fr) donne le créneau horaire que 17track n'a pas.
+- Appelé **uniquement** quand 17track annonce la livraison : nouvelle date prévue, ou passage en cours de livraison (polling et webhook), une fois par annonce.
+- `estimDate` donne le jour ; le créneau `estimHourMin`/`estimHourMax` n'est retenu que s'il tombe ce jour-là, sinon la journée entière.
+- `estimated_delivery_source: La Poste` ; non écrasé par les mises à jour 17track tant que 17track n'annonce rien de nouveau. Une nouvelle date 17track remplace d'abord l'ancien créneau, puis La Poste est redemandée.
+- Endpoint non officiel : toute erreur (HTTP, délai, blocage) garde les données 17track.
+
+#### Diagnostics
+
+« Télécharger les diagnostics » contient, par numéro, la dernière réponse brute de 17track (polling ou webhook), avec la clé API, l'identifiant du webhook et les identifiants des boîtes mail masqués. Les dates 17track au format `2026/11/20` ou `2026-11-20 10:00` sont aussi lues.
+
+<details>
+<summary>Détail des 3 commits</summary>
+
+##### Nouveautés
+
+- Diagnostics with the raw 17track data, more tolerant dates ([1d22bc2](https://github.com/antvgr/hacs-suivi-colis/commit/1d22bc2b32c525efd3a984d0d3205387b7ed5374))
+- Colissimo delivery day and time slot from La Poste ([203df06](https://github.com/antvgr/hacs-suivi-colis/commit/203df06e3ce98f89a280ed3e7e60d001ac805ccd))
+- Deliveries calendar; ask La Poste only when 17track announces a delivery ([0e5e897](https://github.com/antvgr/hacs-suivi-colis/commit/0e5e897a134a3a7b174569156bec7fbbf439c302))
+
+</details>
+
+---
+
+**Mise à jour** : HACS → Suivi de Colis → Mettre à jour, puis redémarrer Home Assistant et recharger la page du navigateur pour obtenir la nouvelle carte.
+**Toutes les modifications** : https://github.com/antvgr/hacs-suivi-colis/compare/v1.3.1...v1.4.0
+
 ## v1.3.1 — 2026-11-19
 
 ### fix: faux colis créés depuis les emails, doublons et réimports ([#4](https://github.com/antvgr/hacs-suivi-colis/pull/4))

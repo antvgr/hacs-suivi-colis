@@ -66,7 +66,7 @@ _LOGGER = logging.getLogger(__name__)
 CARD_JS_URL = "/suivi_colis/suivi-colis-card.js"
 CARD_JS_VERSION = "1.3.1"
 
-PLATFORMS = ["sensor", "binary_sensor", "event"]
+PLATFORMS = ["sensor", "binary_sensor", "event", "calendar"]
 
 SERVICE_ADD_PACKAGE = "add_package"
 SERVICE_REMOVE_PACKAGE = "remove_package"

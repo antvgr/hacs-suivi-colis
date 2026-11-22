@@ -275,6 +275,11 @@
           }
         }
       }
+    },
+    "calendar": {
+      "deliveries": {
+        "name": "Deliveries"
+      }
     }
   },
   "exceptions": {

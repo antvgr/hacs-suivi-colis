@@ -213,3 +213,13 @@ async def test_sensor_shows_package_name(hass):
     assert s1.name == "Clavier MX Keys" and s1.entity_id == "sensor.6a12345678901"
     assert s1.extra_state_attributes["package_name"] == "Clavier MX Keys"
     assert s2.name == "XA123456789FR" and s2.extra_state_attributes["package_name"] == ""
+
+
+def test_parse_time_accepts_carrier_formats():
+    """Date only, space separator and slashes are all read."""
+    from custom_components.suivi_colis.api_17track import _parse_time
+
+    assert _parse_time("2026-11-20").date().isoformat() == "2026-11-20"
+    assert _parse_time("2026/11/20 10:00").hour == 10
+    assert _parse_time("2026-11-20T10:00:00+01:00").utcoffset().total_seconds() == 3600
+    assert _parse_time("not a date") is None and _parse_time(None) is None

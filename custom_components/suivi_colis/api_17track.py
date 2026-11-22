@@ -92,9 +92,13 @@ def _parse_time(value: str | None) -> datetime | None:
     """Parse a 17track timestamp, always returning a timezone-aware datetime."""
     if not value:
         return None
+    if not isinstance(value, str):
+        return None
+    # Some carriers give "2026/11/20" or "2026-11-20 10:00": normalize first
+    text = value.strip().replace("/", "-")
     try:
-        parsed = datetime.fromisoformat(value)
-    except (TypeError, ValueError):
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
         return None
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
@@ -123,6 +127,9 @@ class Api17TrackClient:
         self.lang = lang
         self._last_request_time: float = 0
         self._rate_lock = asyncio.Lock()
+        # Last raw item received per tracking number (polling or webhook),
+        # exposed in the diagnostics to check what 17track really sends
+        self.last_raw: dict[str, dict] = {}
 
     @property
     def _headers(self) -> dict[str, str]:
@@ -258,6 +265,8 @@ class Api17TrackClient:
 
     def parse_tracked_item(self, item: dict) -> dict:
         """Parse one gettrackinfo/webhook item ({number, carrier, track_info})."""
+        if item.get("number"):
+            self.last_raw[str(item["number"]).upper()] = item
         data = self._parse_track_data(item.get("track_info") or {})
         code = item.get("carrier")
         data["carrier_code"] = code if isinstance(code, int) and code > 0 else None

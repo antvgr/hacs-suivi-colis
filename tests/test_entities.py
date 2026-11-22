@@ -160,3 +160,42 @@ async def test_removing_a_mailbox_removes_its_entity(hass, setup):
         await hass.async_block_till_done()
 
     assert registry.async_get_entity_id("binary_sensor", DOMAIN, uid) is None
+
+
+async def test_diagnostics_redact_secrets_and_expose_raw_17track(hass, setup):
+    """Diagnostics show the raw 17track data without any secret."""
+    from custom_components.suivi_colis.diagnostics import (
+        async_get_config_entry_diagnostics,
+    )
+
+    entry, _ = setup
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    raw = {"number": "CH514085194DE", "carrier": 7041, "track_info": {"time_metrics": {}}}
+    coordinator.api_client.parse_tracked_item(raw)
+
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert diag["entry"]["data"] == {"api_key": "**REDACTED**", "webhook_id": "**REDACTED**"}
+    mailbox = diag["entry"]["options"]["mailboxes"][0]
+    assert mailbox["password"] == "**REDACTED**" and mailbox["username"] == "**REDACTED**"
+    assert diag["raw_17track"]["CH514085194DE"] == raw
+    assert len(diag["packages"]) == 5
+
+
+async def test_deliveries_calendar(hass, setup):
+    """One calendar on the device, listing the expected deliveries."""
+    from homeassistant.util import dt as dt_util
+
+    entity_id = er.async_get(hass).async_get_entity_id(
+        "calendar", DOMAIN, f"{setup[0].entry_id}_deliveries"
+    )
+    assert entity_id
+    state = hass.states.get(entity_id)
+    # Next delivery: the package expected tomorrow
+    assert state.attributes["message"] == "Livraison : Chaussures"
+
+    entity = hass.data["calendar"].get_entity(entity_id)
+    now = dt_util.now()
+    events = await entity.async_get_events(hass, now, now + timedelta(days=7))
+    # CH514085194DE has no estimate any more after the 17track refresh
+    assert [e.summary for e in events] == ["Livraison : Chaussures"]

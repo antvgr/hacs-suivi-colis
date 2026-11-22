@@ -1,0 +1,89 @@
+"""Estimated delivery date and time slot from La Poste (Colissimo).
+
+17track often gives only the day for Colissimo; the public La Poste tracking
+service also gives the delivery time slot. Unofficial endpoint (the one the
+laposte.fr tracking page uses): any failure is ignored and the 17track data
+is kept.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime, time
+from typing import Any
+
+import aiohttp
+
+from homeassistant.util import dt as dt_util
+
+from .api_17track import _parse_time
+from .models import Package
+
+_LOGGER = logging.getLogger(__name__)
+
+LAPOSTE_URL = "https://www.laposte.fr/ssu/sun/back/suivi-unifie/{}"
+LAPOSTE_SOURCE = "La Poste"
+LAPOSTE_CARRIERS = {"colissimo", "laposte"}
+LAPOSTE_17TRACK_CODE = 6051
+_TIMEOUT = aiohttp.ClientTimeout(total=15)
+
+
+def is_laposte_package(pkg: Package) -> bool:
+    """Package delivered by La Poste / Colissimo (at least for the last leg)."""
+    return pkg.carrier in LAPOSTE_CARRIERS or pkg.carrier_code == LAPOSTE_17TRACK_CODE
+
+
+def parse_estimate(payload: Any) -> dict | None:
+    """Estimated delivery {from, to} of a suivi-unifie answer, None if unknown.
+
+    The day comes from ``estimDate``. The ``estimHourMin``/``estimHourMax`` slot
+    is used only when it is on that same day (it can be left over from an
+    earlier estimate); otherwise the whole day is returned.
+    """
+    item = payload[0] if isinstance(payload, list) and payload else payload
+    if not isinstance(item, dict):
+        return None
+    shipment = item.get("shipment") or {}
+    if shipment.get("isFinal"):
+        return None
+    estimate = _parse_time(shipment.get("estimDate"))
+    if estimate is None:
+        return None
+
+    day = dt_util.as_local(estimate).date()
+    slot_from = _parse_time(shipment.get("estimHourMin"))
+    slot_to = _parse_time(shipment.get("estimHourMax"))
+    if (
+        slot_from
+        and slot_to
+        and dt_util.as_local(slot_from).date() == day
+        and dt_util.as_local(slot_to).date() == day
+        and slot_from <= slot_to
+    ):
+        return {"from": slot_from, "to": slot_to}
+
+    tz = dt_util.get_default_time_zone()
+    return {
+        "from": datetime.combine(day, time.min, tzinfo=tz),
+        "to": datetime.combine(day, time(23, 59, 59), tzinfo=tz),
+    }
+
+
+async def async_get_estimate(
+    session: aiohttp.ClientSession, tracking_number: str
+) -> tuple[bool, dict | None]:
+    """Ask La Poste. Returns (answered, estimate or None)."""
+    try:
+        async with session.get(
+            LAPOSTE_URL.format(tracking_number),
+            headers={"Accept": "application/json", "Accept-Language": "fr-FR"},
+            timeout=_TIMEOUT,
+        ) as resp:
+            if resp.status != 200:
+                _LOGGER.debug("La Poste: HTTP %s for %s", resp.status, tracking_number)
+                return False, None
+            payload = await resp.json(content_type=None)
+    except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+        _LOGGER.debug("La Poste: no answer for %s: %s", tracking_number, err)
+        return False, None
+    return True, parse_estimate(payload)

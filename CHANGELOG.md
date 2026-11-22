@@ -1,5 +1,36 @@
 # Changelog
 
+## v1.4.2 — 2026-11-22
+
+### fix(laposte): ne plus fermer la session La Poste ; réponse brute dans les diagnostics ([#7](https://github.com/antvgr/hacs-suivi-colis/pull/7))
+
+#### Problème
+
+Après la v1.4.1 (l'appel La Poste fonctionne, plus de 403), Home Assistant signalait au rechargement :
+
+> Detected that custom integration 'suivi_colis' closes the Home Assistant aiohttp session at custom_components/suivi_colis/coordinator.py, line 489
+
+Une session créée par `async_create_clientsession` ne doit pas être fermée par l'intégration.
+
+#### Correction
+
+- Session La Poste (avec son propre cookie jar) créée une seule fois par instance Home Assistant, réutilisée entre les rechargements, fermée par Home Assistant à l'arrêt (`laposte.async_get_laposte_session`).
+- Diagnostics : ajout de `raw_laposte`, la dernière réponse brute `suivi-unifie` par colis, pour vérifier le jour et le créneau renvoyés.
+
+<details>
+<summary>Détail des 1 commits</summary>
+
+##### Corrections
+
+- Laposte : do not close the La Poste session; raw answer in diagnostics ([8e077ef](https://github.com/antvgr/hacs-suivi-colis/commit/8e077ef0dfbfa86936a3a5a7fe4acd2e7598a04c))
+
+</details>
+
+---
+
+**Mise à jour** : HACS → Suivi de Colis → Mettre à jour, puis redémarrer Home Assistant et recharger la page du navigateur pour obtenir la nouvelle carte.
+**Toutes les modifications** : https://github.com/antvgr/hacs-suivi-colis/compare/v1.4.1...v1.4.2
+
 ## v1.4.1 — 2026-11-22
 
 ### fix(laposte): appeler le suivi La Poste comme la page laposte.fr ([#6](https://github.com/antvgr/hacs-suivi-colis/pull/6))

@@ -107,7 +107,7 @@ Un capteur par colis en cours, nommé d'après le nom que vous lui avez donné, 
   - `tracking_number`, `package_name`, `carrier` ;
   - `sub_status` : statut détaillé 17track, par exemple `DeliveryFailure_NoBody` ;
   - `info_text`, `location` ;
-  - `estimated_delivery_from` / `estimated_delivery_to`, `delivered_at` ; pour les colis Colissimo / La Poste, le jour et le créneau de livraison sont demandés à La Poste (`estimated_delivery_source: La Poste`), sinon ils viennent de 17track ;
+  - `estimated_delivery_from` / `estimated_delivery_to`, `delivered_at` ; ils viennent de 17track ; pour un colis Colissimo / La Poste, quand 17track annonce une date de livraison (ou que le colis part en livraison), le créneau horaire est demandé une fois à La Poste (`estimated_delivery_source: La Poste`) ;
   - `events` : l'historique, qui n'est pas enregistré dans la base de données pour ne pas la faire grossir ;
   - `tracking_stopped` : 17track a arrêté le suivi.
 
@@ -123,6 +123,7 @@ Un colis livré est archivé (et son capteur retiré) après le délai choisi da
 | Prochaine livraison | capteur (horodatage) | Date prévue la plus proche, avec le colis concerné en attributs. |
 | Problème de livraison | capteur binaire (problème) | Allumé si un colis est en échec, en anomalie, introuvable, expiré ou n'est plus suivi. |
 | Changement de statut | entité événement | Se déclenche à chaque changement de statut d'un colis. |
+| Livraisons | calendrier | Un événement par livraison prévue : sur la journée, ou sur le créneau horaire quand il est connu. Affichable dans le calendrier de Home Assistant et utilisable dans les automatisations (déclencheur « Calendrier »). |
 
 ### Diagnostic
 

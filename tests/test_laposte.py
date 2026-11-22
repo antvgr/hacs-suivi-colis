@@ -5,7 +5,6 @@ from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
-from homeassistant.util import dt as dt_util
 
 from custom_components.suivi_colis.laposte import (
     LAPOSTE_SOURCE,
@@ -77,47 +76,80 @@ def _coord(hass, pkg):
     return _coordinator(hass, _store(pkg), MagicMock())
 
 
-async def test_coordinator_uses_laposte_and_keeps_it_on_17track_updates(hass, aioclient_mock):
-    pkg = Package("CC240206309DE", carrier="colissimo", status="in_transit",
-                  estimated_delivery_from=datetime.fromisoformat("2026-11-23T01:00:00+01:00"),
-                  estimated_delivery_source="Official")
-    coord = _coord(hass, pkg)
-    aioclient_mock.get(LAPOSTE_URL.format("CC240206309DE"), json=_answer(
-        estimHourMin="2026-11-23T08:30:00+01:00", estimHourMax="2026-11-23T12:30:00+01:00"
-    ))
+def _track(status="in_transit", est_from=None, est_to=None, source=""):
+    """Parsed 17track data, as _apply_track_data receives it."""
+    return {
+        "status": status, "info_text": "", "location": "", "events": [],
+        "estimated_delivery_from": est_from, "estimated_delivery_to": est_to,
+        "estimated_delivery_source": source,
+    }
 
+
+DAY_23 = datetime.fromisoformat("2026-11-23T01:00:00+01:00")
+DAY_24 = datetime.fromisoformat("2026-11-24T01:00:00+01:00")
+SLOT_23 = {"estimHourMin": "2026-11-23T08:30:00+01:00", "estimHourMax": "2026-11-23T12:30:00+01:00"}
+URL = LAPOSTE_URL.format("CC240206309DE")
+
+
+async def test_laposte_not_asked_without_announcement(hass, aioclient_mock):
+    """No estimate and not out for delivery: La Poste is not polled."""
+    pkg = Package("CC240206309DE", carrier="colissimo", status="in_transit")
+    coord = _coord(hass, pkg)
+    aioclient_mock.get(URL, json=_answer(**SLOT_23))
+
+    coord._apply_track_data(pkg, _track(), datetime.now())
     await coord._update_laposte_estimates()
 
-    assert pkg.estimated_delivery_source == LAPOSTE_SOURCE
-    assert pkg.estimated_delivery_to.isoformat() == "2026-11-23T12:30:00+01:00"
+    assert aioclient_mock.call_count == 0
 
-    # A 17track update (poll or webhook) does not replace the precise slot
-    coord._apply_track_data(pkg, {
-        "status": "in_transit", "info_text": "", "location": "", "events": [],
-        "estimated_delivery_from": datetime.fromisoformat("2026-11-23T01:00:00+01:00"),
-        "estimated_delivery_to": None, "estimated_delivery_source": "Official",
-    }, datetime.now())
+
+async def test_laposte_asked_once_per_17track_announcement(hass, aioclient_mock):
+    pkg = Package("CC240206309DE", carrier="colissimo", status="in_transit")
+    coord = _coord(hass, pkg)
+    aioclient_mock.get(URL, json=_answer(**SLOT_23))
+
+    # 17track announces the 23rd: La Poste gives the slot
+    coord._apply_track_data(pkg, _track(est_from=DAY_23, source="Official"), datetime.now())
+    await coord._update_laposte_estimates()
+    assert aioclient_mock.call_count == 1
     assert pkg.estimated_delivery_source == LAPOSTE_SOURCE
     assert pkg.estimated_delivery_from.isoformat() == "2026-11-23T08:30:00+01:00"
 
-
-async def test_coordinator_keeps_17track_when_laposte_fails(hass, aioclient_mock):
-    pkg = Package("CC240206309DE", carrier="colissimo", status="in_transit",
-                  estimated_delivery_from=dt_util.now(), estimated_delivery_source="Official")
-    coord = _coord(hass, pkg)
-    aioclient_mock.get(LAPOSTE_URL.format("CC240206309DE"), status=403)
-
+    # Same 17track estimate again (poll or webhook): slot kept, La Poste not asked
+    coord._apply_track_data(pkg, _track(est_from=DAY_23, source="Official"), datetime.now())
     await coord._update_laposte_estimates()
+    assert aioclient_mock.call_count == 1
+    assert pkg.estimated_delivery_source == LAPOSTE_SOURCE
 
+    # 17track moves the delivery to the 24th: La Poste asked again
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(URL, status=503)
+    coord._apply_track_data(pkg, _track(est_from=DAY_24, source="Official"), datetime.now())
+    await coord._update_laposte_estimates()
+    assert aioclient_mock.call_count == 1
+    # La Poste failed: the new 17track date is kept, not the old slot
     assert pkg.estimated_delivery_source == "Official"
+    assert pkg.estimated_delivery_from == DAY_24
 
 
-async def test_coordinator_drops_laposte_estimate_when_gone(hass, aioclient_mock):
-    pkg = Package("CC240206309DE", carrier="colissimo", status="in_transit",
-                  estimated_delivery_from=dt_util.now(), estimated_delivery_source=LAPOSTE_SOURCE)
+async def test_laposte_asked_when_out_for_delivery(hass, aioclient_mock):
+    pkg = Package("CC240206309DE", carrier="colissimo", status="in_transit")
     coord = _coord(hass, pkg)
-    aioclient_mock.get(LAPOSTE_URL.format("CC240206309DE"), json=_answer(isFinal=True))
+    aioclient_mock.get(URL, json=_answer(**SLOT_23))
 
+    coord._apply_track_data(pkg, _track(status="out_for_delivery"), datetime.now())
     await coord._update_laposte_estimates()
 
-    assert pkg.estimated_delivery_source == "" and pkg.estimated_delivery_from is None
+    assert aioclient_mock.call_count == 1
+    assert pkg.estimated_delivery_to.isoformat() == "2026-11-23T12:30:00+01:00"
+
+
+async def test_other_carriers_never_ask_laposte(hass, aioclient_mock):
+    pkg = Package("1ZWV49986892191508", carrier="ups", status="in_transit")
+    coord = _coord(hass, pkg)
+
+    coord._apply_track_data(pkg, _track(status="out_for_delivery", est_from=DAY_23), datetime.now())
+    await coord._update_laposte_estimates()
+
+    assert aioclient_mock.call_count == 0
+    assert pkg.estimated_delivery_from == DAY_23

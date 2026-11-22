@@ -180,3 +180,22 @@ async def test_diagnostics_redact_secrets_and_expose_raw_17track(hass, setup):
     assert mailbox["password"] == "**REDACTED**" and mailbox["username"] == "**REDACTED**"
     assert diag["raw_17track"]["CH514085194DE"] == raw
     assert len(diag["packages"]) == 5
+
+
+async def test_deliveries_calendar(hass, setup):
+    """One calendar on the device, listing the expected deliveries."""
+    from homeassistant.util import dt as dt_util
+
+    entity_id = er.async_get(hass).async_get_entity_id(
+        "calendar", DOMAIN, f"{setup[0].entry_id}_deliveries"
+    )
+    assert entity_id
+    state = hass.states.get(entity_id)
+    # Next delivery: the package expected tomorrow
+    assert state.attributes["message"] == "Livraison : Chaussures"
+
+    entity = hass.data["calendar"].get_entity(entity_id)
+    now = dt_util.now()
+    events = await entity.async_get_events(hass, now, now + timedelta(days=7))
+    # CH514085194DE has no estimate any more after the 17track refresh
+    assert [e.summary for e in events] == ["Livraison : Chaussures"]

@@ -80,6 +80,9 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
         self.last_push: datetime | None = None
         self._status_listeners: list[Callable[[dict], None]] = []
         self._followup_unsubs: list = []
+        # La Poste: last 17track estimate seen per package, packages to ask
+        self._last_17track_estimate: dict[str, tuple] = {}
+        self._laposte_pending: set[str] = set()
 
     @property
     def mailboxes(self) -> list[dict]:
@@ -160,23 +163,27 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
         await self._update_laposte_estimates()
 
     async def _update_laposte_estimates(self) -> None:
-        """Delivery day and time slot of Colissimo packages from La Poste."""
+        """Ask La Poste for the delivery slot of the packages 17track announced.
+
+        Only the Colissimo / La Poste packages for which 17track just gave a
+        new estimated delivery, or which just went out for delivery, are
+        asked: La Poste is not polled at every refresh.
+        """
+        pending, self._laposte_pending = self._laposte_pending, set()
+        if not pending:
+            return
         session = async_get_clientsession(self.hass)
-        for pkg in list(self.store.active_packages.values()):
-            if pkg.status == PackageStatus.DELIVERED or not is_laposte_package(pkg):
+        for number in pending:
+            pkg = self.store.get_package(number)
+            if pkg is None or pkg.status == PackageStatus.DELIVERED:
                 continue
-            answered, estimate = await async_get_estimate(session, pkg.tracking_number)
+            answered, estimate = await async_get_estimate(session, number)
             if not answered:
-                continue  # keep what we have
+                continue  # keep the 17track estimate
             if estimate:
                 pkg.estimated_delivery_from = estimate["from"]
                 pkg.estimated_delivery_to = estimate["to"]
                 pkg.estimated_delivery_source = LAPOSTE_SOURCE
-            elif pkg.estimated_delivery_source == LAPOSTE_SOURCE:
-                # La Poste has no estimate any more: back to 17track's
-                pkg.estimated_delivery_from = None
-                pkg.estimated_delivery_to = None
-                pkg.estimated_delivery_source = ""
 
     def _apply_track_data(self, pkg: Package, data: dict, now: datetime) -> None:
         """Apply parsed 17track data (polling or webhook) to a package."""
@@ -187,18 +194,23 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
         pkg.status = data["status"]
         pkg.sub_status = data.get("sub_status", "")
         pkg.sub_status_descr = data.get("sub_status_descr", "")
-        # The La Poste slot is more precise: kept until La Poste drops it
-        if pkg.estimated_delivery_source != LAPOSTE_SOURCE:
+        # Update carrier from 17track (always trust API over local detection),
+        # first: it decides whether La Poste is asked
+        if data.get("carrier"):
+            pkg.carrier = data["carrier"]
+        announced = self._delivery_announced(pkg, data, old_status)
+        # The La Poste slot is more precise: kept until 17track announces
+        # something new, then La Poste is asked again
+        if announced or pkg.estimated_delivery_source != LAPOSTE_SOURCE:
             pkg.estimated_delivery_from = data.get("estimated_delivery_from")
             pkg.estimated_delivery_to = data.get("estimated_delivery_to")
             pkg.estimated_delivery_source = data.get("estimated_delivery_source", "")
+        if announced:
+            self._laposte_pending.add(pkg.tracking_number)
         pkg.info_text = data["info_text"]
         pkg.location = data["location"]
         pkg.events = data["events"]
         pkg.last_updated = now
-        # Update carrier from 17track (always trust API over local detection)
-        if data.get("carrier"):
-            pkg.carrier = data["carrier"]
 
         if pkg.status != old_status:
             self._notify_status_change(pkg, old_status)
@@ -246,6 +258,27 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
         for listener in list(self._status_listeners):
             listener(data)
 
+    def _delivery_announced(self, pkg: Package, data: dict, old_status: str) -> bool:
+        """17track announces the coming delivery of a La Poste package.
+
+        True when 17track gives a new estimated delivery, or when the package
+        just went out for delivery.
+        """
+        if not is_laposte_package(pkg) or pkg.status == PackageStatus.DELIVERED:
+            return False
+        estimate = (
+            data.get("estimated_delivery_from"),
+            data.get("estimated_delivery_to"),
+        )
+        previous = self._last_17track_estimate.get(pkg.tracking_number)
+        self._last_17track_estimate[pkg.tracking_number] = estimate
+        new_estimate = any(estimate) and estimate != previous
+        out_for_delivery = (
+            pkg.status == PackageStatus.OUT_FOR_DELIVERY
+            and old_status != PackageStatus.OUT_FOR_DELIVERY
+        )
+        return bool(new_estimate or out_for_delivery)
+
     async def async_handle_push(self, event: str, items: list[dict]) -> int:
         """Apply a 17track webhook notification. Returns the packages updated."""
         now = datetime.now()
@@ -264,6 +297,7 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
             updated += 1
         if updated:
             self.last_push = dt_util.utcnow()
+            await self._update_laposte_estimates()
             await self.store.async_save()
             self.async_set_updated_data(self.store.active_packages)
         return updated

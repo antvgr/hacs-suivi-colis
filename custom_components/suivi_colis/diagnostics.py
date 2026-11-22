@@ -28,4 +28,6 @@ async def async_get_config_entry_diagnostics(
         "removed_numbers": sorted(coordinator.store.removed_numbers),
         # Raw gettrackinfo/webhook items, unparsed
         "raw_17track": coordinator.api_client.last_raw,
+        # Raw La Poste suivi-unifie answers (Colissimo delivery slot)
+        "raw_laposte": coordinator.laposte_raw,
     }

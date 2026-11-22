@@ -46,11 +46,20 @@ def _answer(**shipment):
     return answer
 
 
-def test_slot_on_another_day_gives_the_whole_estimated_day():
-    """The 22/11 slot does not match the 23/11 estimate: whole day of the 23rd."""
+def test_slot_hours_apply_to_the_estimated_day():
+    """Real answer: slot dated Sunday 22, delivery Monday 23 -> Monday 08:30-12:30."""
     est = parse_estimate(ANSWER)
-    assert est["from"].isoformat() == "2026-11-23T00:00:00+01:00"
-    assert est["to"].isoformat() == "2026-11-23T23:59:59+01:00"
+    assert est["from"].isoformat() == "2026-11-23T08:30:00+01:00"
+    assert est["to"].isoformat() == "2026-11-23T12:30:00+01:00"
+
+
+def test_no_slot_gives_the_whole_estimated_day():
+    for missing in ({"estimHourMin": None}, {"estimHourMax": None},
+                    {"estimHourMin": "2026-11-22T12:30:00+01:00",
+                     "estimHourMax": "2026-11-22T08:30:00+01:00"}):
+        est = parse_estimate(_answer(**missing))
+        assert est["from"].isoformat() == "2026-11-23T00:00:00+01:00"
+        assert est["to"].isoformat() == "2026-11-23T23:59:59+01:00"
 
 
 def test_slot_on_the_estimated_day_is_used():

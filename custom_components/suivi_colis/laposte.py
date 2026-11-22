@@ -78,9 +78,11 @@ def is_laposte_package(pkg: Package) -> bool:
 def parse_estimate(payload: Any) -> dict | None:
     """Estimated delivery {from, to} of a suivi-unifie answer, None if unknown.
 
-    The day comes from ``estimDate``. The ``estimHourMin``/``estimHourMax`` slot
-    is used only when it is on that same day (it can be left over from an
-    earlier estimate); otherwise the whole day is returned.
+    The day comes from ``estimDate``; ``estimHourMin``/``estimHourMax`` give
+    the hours of the slot. La Poste dates those two with the day the estimate
+    was made, not always the delivery day (seen: estimDate Monday 23, slot
+    dated Sunday 22 08:30-12:30): only their time of day is used, on the
+    estimated day. Without a slot, the whole day is returned.
     """
     item = payload[0] if isinstance(payload, list) and payload else payload
     if not isinstance(item, dict):
@@ -95,16 +97,13 @@ def parse_estimate(payload: Any) -> dict | None:
     day = dt_util.as_local(estimate).date()
     slot_from = _parse_time(shipment.get("estimHourMin"))
     slot_to = _parse_time(shipment.get("estimHourMax"))
-    if (
-        slot_from
-        and slot_to
-        and dt_util.as_local(slot_from).date() == day
-        and dt_util.as_local(slot_to).date() == day
-        and slot_from <= slot_to
-    ):
-        return {"from": slot_from, "to": slot_to}
-
     tz = dt_util.get_default_time_zone()
+    if slot_from and slot_to:
+        start = datetime.combine(day, dt_util.as_local(slot_from).time(), tzinfo=tz)
+        end = datetime.combine(day, dt_util.as_local(slot_to).time(), tzinfo=tz)
+        if start < end:
+            return {"from": start, "to": end}
+
     return {
         "from": datetime.combine(day, time.min, tzinfo=tz),
         "to": datetime.combine(day, time(23, 59, 59), tzinfo=tz),

@@ -182,3 +182,18 @@ async def test_laposte_called_like_the_tracking_page(hass, aioclient_mock):
     assert api_headers["Referer"] == PAGE
     assert api_headers["Accept"].startswith("application/json")
     assert pkg.estimated_delivery_source == LAPOSTE_SOURCE
+
+
+async def test_laposte_session_shared_and_raw_kept(hass, aioclient_mock):
+    """One La Poste session reused across reloads; raw answer kept for diagnostics."""
+    from custom_components.suivi_colis.laposte import async_get_laposte_session
+
+    assert async_get_laposte_session(hass) is async_get_laposte_session(hass)
+
+    pkg = Package("CC240206309DE", carrier="colissimo", status="in_transit")
+    coord = _coord(hass, pkg)
+    _mock_laposte(aioclient_mock, json=ANSWER)
+    coord._apply_track_data(pkg, _track(status="out_for_delivery"), datetime.now())
+    await coord._update_laposte_estimates()
+
+    assert coord.laposte_raw["CC240206309DE"] == ANSWER

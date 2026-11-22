@@ -14,6 +14,8 @@ from typing import Any
 
 import aiohttp
 
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.util import dt as dt_util
 
 from .api_17track import _parse_time
@@ -50,6 +52,22 @@ LAPOSTE_SOURCE = "La Poste"
 LAPOSTE_CARRIERS = {"colissimo", "laposte"}
 LAPOSTE_17TRACK_CODE = 6051
 _TIMEOUT = aiohttp.ClientTimeout(total=15)
+
+
+_SESSION_KEY = "suivi_colis_laposte_session"
+
+
+def async_get_laposte_session(hass: HomeAssistant) -> aiohttp.ClientSession:
+    """Session dedicated to La Poste, keeping its cookies between requests.
+
+    One per Home Assistant instance, reused across reloads and closed by
+    Home Assistant when it stops (it must not be closed by the integration).
+    """
+    session = hass.data.get(_SESSION_KEY)
+    if session is None:
+        session = async_create_clientsession(hass, cookie_jar=aiohttp.CookieJar())
+        hass.data[_SESSION_KEY] = session
+    return session
 
 
 def is_laposte_package(pkg: Package) -> bool:
@@ -94,13 +112,16 @@ def parse_estimate(payload: Any) -> dict | None:
 
 
 async def async_get_estimate(
-    session: aiohttp.ClientSession, tracking_number: str
+    session: aiohttp.ClientSession,
+    tracking_number: str,
+    raw: dict[str, Any] | None = None,
 ) -> tuple[bool, dict | None]:
     """Ask La Poste like the laposte.fr tracking page does.
 
     ``session`` must keep cookies (its own cookie jar): the tracking page is
     opened first, then the service is called with the cookies it set.
-    Returns (answered, estimate or None).
+    Returns (answered, estimate or None). The answer is also stored in
+    ``raw`` (by tracking number) when given, for the diagnostics.
     """
     page_url = LAPOSTE_PAGE_URL.format(tracking_number)
     try:
@@ -115,6 +136,8 @@ async def async_get_estimate(
                 _LOGGER.debug("La Poste: HTTP %s for %s", resp.status, tracking_number)
                 return False, None
             payload = await resp.json(content_type=None)
+            if raw is not None:
+                raw[tracking_number] = payload
     except (aiohttp.ClientError, TimeoutError, ValueError) as err:
         _LOGGER.debug("La Poste: no answer for %s: %s", tracking_number, err)
         return False, None

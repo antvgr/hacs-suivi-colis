@@ -5,12 +5,14 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
+import aiohttp
+
 from collections.abc import Callable
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
@@ -83,6 +85,7 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
         # La Poste: last 17track estimate seen per package, packages to ask
         self._last_17track_estimate: dict[str, tuple] = {}
         self._laposte_pending: set[str] = set()
+        self._laposte_session: aiohttp.ClientSession | None = None
 
     @property
     def mailboxes(self) -> list[dict]:
@@ -172,7 +175,12 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
         pending, self._laposte_pending = self._laposte_pending, set()
         if not pending:
             return
-        session = async_get_clientsession(self.hass)
+        if self._laposte_session is None:
+            # Own session: La Poste needs its cookies kept between requests
+            self._laposte_session = async_create_clientsession(
+                self.hass, cookie_jar=aiohttp.CookieJar()
+            )
+        session = self._laposte_session
         for number in pending:
             pkg = self.store.get_package(number)
             if pkg is None or pkg.status == PackageStatus.DELIVERED:
@@ -477,6 +485,9 @@ class SuiviColisCoordinator(DataUpdateCoordinator[dict[str, Package]]):
         for unsub in self._followup_unsubs:
             unsub()
         self._followup_unsubs = []
+        if self._laposte_session is not None:
+            await self._laposte_session.close()
+            self._laposte_session = None
         await super().async_shutdown()
 
     def _remove_entity(self, tracking_number: str) -> None:

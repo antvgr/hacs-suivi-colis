@@ -1,5 +1,34 @@
 # Changelog
 
+## v1.4.1 — 2026-11-22
+
+### fix(laposte): appeler le suivi La Poste comme la page laposte.fr ([#6](https://github.com/antvgr/hacs-suivi-colis/pull/6))
+
+#### Problème
+
+Depuis Home Assistant, `suivi-unifie/<numéro>` répondait **HTTP 403** (vu dans les logs debug sur une vraie installation) : le service exige les cookies de session posés par la page de suivi et des en-têtes de navigateur. Le créneau La Poste n'arrivait donc jamais dans le capteur ni dans le calendrier.
+
+#### Correction
+
+- Ouverture d'abord de la page de suivi `https://www.laposte.fr/outils/suivre-vos-envois?code=<numéro>` pour obtenir les cookies de session.
+- Puis appel de `…/suivi-unifie/<numéro>?lang=fr` avec ces cookies, la page en `Referer` et des en-têtes de navigateur (`User-Agent`, `Accept`, `Accept-Language`, `Sec-Fetch-*`).
+- Session dédiée avec son propre cookie jar, fermée au déchargement de l'intégration.
+- Toujours appelé uniquement quand 17track annonce une livraison ; en cas de refus, les données 17track sont gardées.
+
+<details>
+<summary>Détail des 1 commits</summary>
+
+##### Corrections
+
+- Laposte : call the tracking service like the laposte.fr page ([adb14cb](https://github.com/antvgr/hacs-suivi-colis/commit/adb14cb90bd3d2c2070ef61a9c22a805a2833292))
+
+</details>
+
+---
+
+**Mise à jour** : HACS → Suivi de Colis → Mettre à jour, puis redémarrer Home Assistant et recharger la page du navigateur pour obtenir la nouvelle carte.
+**Toutes les modifications** : https://github.com/antvgr/hacs-suivi-colis/compare/v1.4.0...v1.4.1
+
 ## v1.4.0 — 2026-11-22
 
 ### feat: calendrier des livraisons, créneau Colissimo via La Poste, diagnostics ([#5](https://github.com/antvgr/hacs-suivi-colis/pull/5))

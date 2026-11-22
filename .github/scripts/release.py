@@ -32,6 +32,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -73,6 +74,49 @@ def run(*args: str, check: bool = True) -> str:
     if check and result.returncode != 0:
         sys.exit(f"{' '.join(args)} failed:\n{result.stderr}")
     return result.stdout.strip()
+
+
+def push(*refs: str) -> None:
+    """Push refs atomically (all or none), retrying transient failures.
+
+    GitHub sometimes rejects a ref with a bare "remote rejected (failed)":
+    with separate pushes the release commit could land on main without its
+    tag, leaving a half-published release.
+    """
+    for attempt in range(1, 4):
+        result = subprocess.run(
+            ["git", "push", "--atomic", "origin", *refs],
+            cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
+        )
+        if result.returncode == 0:
+            return
+        print(f"git push attempt {attempt} failed:\n{result.stderr}")
+        time.sleep(5 * attempt)
+    sys.exit("git push failed 3 times.")
+
+
+def unfinished_release(tag: str | None) -> tuple[str, str] | None:
+    """(version, commit) of a release commit on main whose tag is missing.
+
+    Happens when a previous run pushed the commit but not the tag.
+    """
+    rev = f"{tag}..HEAD" if tag else "HEAD"
+    for line in run("git", "log", "--first-parent", "--format=%H %s", rev).splitlines():
+        sha, _, subject = line.partition(" ")
+        if subject.startswith(RELEASE_PREFIX):
+            version = subject[len(RELEASE_PREFIX):].strip().lstrip("v")
+            if not run("git", "tag", "--list", f"v{version}"):
+                return version, sha
+    return None
+
+
+def create_github_release(version: str, notes: str) -> None:
+    notes_file = ROOT / ".release-notes.md"
+    notes_file.write_text(notes, encoding="utf-8")
+    run("gh", "release", "create", f"v{version}", "--title", f"v{version}",
+        "--notes-file", str(notes_file), "--verify-tag")
+    notes_file.unlink()
+    print(f"Released v{version}")
 
 
 def repo_slug() -> str | None:
@@ -407,6 +451,22 @@ def main() -> None:
 
     dry_run = "--dry-run" in sys.argv
     tag = last_tag()
+
+    # A previous run pushed its release commit but not the tag: finish it
+    # (tag that commit, GitHub release) instead of releasing again
+    unfinished = unfinished_release(tag)
+    if unfinished:
+        version, sha = unfinished
+        notes = build_notes(version, tag, until=sha)
+        print(f"Finishing v{version} ({sha[:7]}): its tag and GitHub release are missing")
+        print(notes)
+        if dry_run:
+            return
+        run("git", "tag", "-a", f"v{version}", "-m", f"v{version}", sha)
+        push(f"v{version}")
+        create_github_release(version, notes)
+        return
+
     commits = commits_since(tag)
     if tag and not commits:
         print(f"Nothing to release since {tag}.")
@@ -428,15 +488,9 @@ def main() -> None:
     run("git", "commit", "-m", f"{RELEASE_PREFIX} v{version}")
     run("git", "tag", "-a", f"v{version}", "-m", f"v{version}")
     branch = os.environ.get("GITHUB_REF_NAME", "main")
-    run("git", "push", "origin", f"HEAD:{branch}")
-    run("git", "push", "origin", f"v{version}")
-
-    notes_file = ROOT / ".release-notes.md"
-    notes_file.write_text(notes, encoding="utf-8")
-    run("gh", "release", "create", f"v{version}", "--title", f"v{version}",
-        "--notes-file", str(notes_file), "--verify-tag")
-    notes_file.unlink()
-    print(f"Released v{version}")
+    # Commit and tag together: never a release commit without its tag
+    push(f"HEAD:{branch}", f"v{version}")
+    create_github_release(version, notes)
 
 
 if __name__ == "__main__":
